@@ -5,4 +5,4 @@ export async function onRequestGet({env}){
     JSON.stringify(await buildGrid(env,env.OWNER_EMAIL)),
     { headers:{'content-type':'application/json'} }
   )
-}
+} 
