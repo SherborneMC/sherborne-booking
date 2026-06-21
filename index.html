@@ -1,0 +1,182 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.4">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px 'Helvetica Neue'; -webkit-text-stroke: #000000}
+    p.p2 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px 'Helvetica Neue'; -webkit-text-stroke: #000000; min-height: 15.0px}
+    span.s1 {font-kerning: none}
+  </style>
+</head>
+<body>
+<p class="p1"><span class="s1">&lt;!doctype html&gt;</span></p>
+<p class="p1"><span class="s1">&lt;html&gt;</span></p>
+<p class="p1"><span class="s1">&lt;head&gt;</span></p>
+<p class="p1"><span class="s1">&lt;meta charset="utf-8"&gt;</span></p>
+<p class="p1"><span class="s1">&lt;meta name="viewport" content="width=device-width"&gt;</span></p>
+<p class="p1"><span class="s1">&lt;title&gt;Sherborne&lt;/title&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">&lt;style&gt;</span></p>
+<p class="p1"><span class="s1">body { font-family:sans-serif; background:#fffdf8; margin:0 }</span></p>
+<p class="p1"><span class="s1">.container { max-width:900px; margin:auto; padding:20px }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">.trigger {</span></p>
+<p class="p1"><span class="s1">  height:20px;</span></p>
+<p class="p1"><span class="s1">  background:rgba(0,0,0,.05);</span></p>
+<p class="p1"><span class="s1">  margin-bottom:12px;</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">.slot {</span></p>
+<p class="p1"><span class="s1">  display:flex;</span></p>
+<p class="p1"><span class="s1">  justify-content:center;</span></p>
+<p class="p1"><span class="s1">  padding:8px;</span></p>
+<p class="p1"><span class="s1">  margin:6px;</span></p>
+<p class="p1"><span class="s1">  background:#e8efe7;</span></p>
+<p class="p1"><span class="s1">  border-radius:8px;</span></p>
+<p class="p1"><span class="s1">  cursor:pointer</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p1"><span class="s1">.slot.requested { background:#f0eadf }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">.meta {</span></p>
+<p class="p1"><span class="s1">  position:fixed;</span></p>
+<p class="p1"><span class="s1">  bottom:10px;</span></p>
+<p class="p1"><span class="s1">  right:10px;</span></p>
+<p class="p1"><span class="s1">  font-size:11px;</span></p>
+<p class="p1"><span class="s1">  opacity:.4;</span></p>
+<p class="p1"><span class="s1">  transition:.25s</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p1"><span class="s1">.hidden { opacity:0 }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">.panel {</span></p>
+<p class="p1"><span class="s1">  position:fixed;</span></p>
+<p class="p1"><span class="s1">  left:0; top:0;</span></p>
+<p class="p1"><span class="s1">  width:320px; height:100%;</span></p>
+<p class="p1"><span class="s1">  background:white;</span></p>
+<p class="p1"><span class="s1">  transform:translateX(-100%);</span></p>
+<p class="p1"><span class="s1">  transition:.3s;</span></p>
+<p class="p1"><span class="s1">  padding:20px;</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p1"><span class="s1">.panel.open { transform:translateX(0) }</span></p>
+<p class="p1"><span class="s1">&lt;/style&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/head&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">&lt;body&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">&lt;div class="container"&gt;</span></p>
+<p class="p1"><span class="s1">  &lt;div id="trigger" class="trigger"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1">  &lt;div id="app"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">&lt;div id="panel" class="panel"&gt;</span></p>
+<p class="p1"><span class="s1">  &lt;button onclick="closePanel()"&gt;X&lt;/button&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">&lt;div id="meta" class="meta"&gt;&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">&lt;script&gt;</span></p>
+<p class="p1"><span class="s1">let cells=[]</span></p>
+<p class="p1"><span class="s1">let requested=new Set()</span></p>
+<p class="p1"><span class="s1">let internal=false</span></p>
+<p class="p1"><span class="s1">let timer=null</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">async function load(){</span></p>
+<p class="p1"><span class="s1">  const r=await fetch('/api/availability')</span></p>
+<p class="p1"><span class="s1">  const j=await r.json()</span></p>
+<p class="p1"><span class="s1">  cells=j.cells || []</span></p>
+<p class="p1"><span class="s1">  render()</span></p>
+<p class="p1"><span class="s1">  updateMeta()</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">function render(){</span></p>
+<p class="p1"><span class="s1">  app.innerHTML=cells.filter(c=&gt;c.bookable).map(c=&gt;{</span></p>
+<p class="p1"><span class="s1">    const used=requested.has(c.id)</span></p>
+<p class="p1"><span class="s1">    return `&lt;div class="slot ${used?'requested':''}" data-id="${c.id}"&gt;</span></p>
+<p class="p1"><span class="s1">      ${used?'Requested':'Request'} </span></p>
+<p class="p1"><span class="s1">      ${new Date(c.startUtc).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></p>
+<p class="p1"><span class="s1">    &lt;/div&gt;`</span></p>
+<p class="p1"><span class="s1">  }).join('')</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">  let clicks=0</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">  document.querySelectorAll('.slot').forEach(el=&gt;{</span></p>
+<p class="p1"><span class="s1">    el.onclick=()=&gt;{</span></p>
+<p class="p1"><span class="s1">      clicks++</span></p>
+<p class="p1"><span class="s1">      setTimeout(()=&gt;clicks=0,250)</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">      // internal mode</span></p>
+<p class="p1"><span class="s1">      if(internal &amp;&amp; clicks===2){</span></p>
+<p class="p1"><span class="s1">        createReminder(el.dataset.id)</span></p>
+<p class="p1"><span class="s1">        return</span></p>
+<p class="p1"><span class="s1">      }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">      if(internal){</span></p>
+<p class="p1"><span class="s1">        deactivate()</span></p>
+<p class="p1"><span class="s1">      }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">      // open panel</span></p>
+<p class="p1"><span class="s1">      if(clicks===2){</span></p>
+<p class="p1"><span class="s1">        openPanel()</span></p>
+<p class="p1"><span class="s1">      }</span></p>
+<p class="p1"><span class="s1">    }</span></p>
+<p class="p1"><span class="s1">  })</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">function openPanel(){</span></p>
+<p class="p1"><span class="s1">  panel.classList.add('open')</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">function closePanel(){</span></p>
+<p class="p1"><span class="s1">  panel.classList.remove('open')</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">document.addEventListener('keydown', e=&gt;{</span></p>
+<p class="p1"><span class="s1">  if(e.key==='Escape') closePanel()</span></p>
+<p class="p1"><span class="s1">})</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">// INTERNAL MODE</span></p>
+<p class="p1"><span class="s1">trigger.ondblclick=()=&gt;{</span></p>
+<p class="p1"><span class="s1">  internal=true</span></p>
+<p class="p1"><span class="s1">  meta.classList.add('hidden')</span></p>
+<p class="p1"><span class="s1">  clearTimeout(timer)</span></p>
+<p class="p1"><span class="s1">  timer=setTimeout(deactivate,15000)</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">function deactivate(){</span></p>
+<p class="p1"><span class="s1">  internal=false</span></p>
+<p class="p1"><span class="s1">  meta.classList.remove('hidden')</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">async function createReminder(id){</span></p>
+<p class="p1"><span class="s1">  await fetch('/api/book',{</span></p>
+<p class="p1"><span class="s1">    method:'POST',</span></p>
+<p class="p1"><span class="s1">    headers:{'Content-Type':'application/json'},</span></p>
+<p class="p1"><span class="s1">    body:JSON.stringify({slotId:id,internal:true})</span></p>
+<p class="p1"><span class="s1">  })</span></p>
+<p class="p1"><span class="s1">  requested.add(id)</span></p>
+<p class="p1"><span class="s1">  deactivate()</span></p>
+<p class="p1"><span class="s1">  render()</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">function updateMeta(){</span></p>
+<p class="p1"><span class="s1">  meta.textContent='v11 · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})</span></p>
+<p class="p1"><span class="s1">}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">// refresh</span></p>
+<p class="p1"><span class="s1">setInterval(()=&gt;{</span></p>
+<p class="p1"><span class="s1">  if(document.visibilityState==='visible'){</span></p>
+<p class="p1"><span class="s1">    meta.textContent='Updating…'</span></p>
+<p class="p1"><span class="s1">    load()</span></p>
+<p class="p1"><span class="s1">    setTimeout(updateMeta,5000)</span></p>
+<p class="p1"><span class="s1">  }</span></p>
+<p class="p1"><span class="s1">},120000)</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1">load()</span></p>
+<p class="p1"><span class="s1">&lt;/script&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/body&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/html&gt;</span></p>
+</body>
+</html>
