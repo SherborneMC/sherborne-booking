@@ -50,22 +50,14 @@ function addMinutesTime(time,mins){ const total=minutesOf(time)+mins; return `${
 function inIntroWindow(time){ const m=minutesOf(time); return INTRO_WINDOWS.some(w=>m>=minutesOf(w.start) && m<minutesOf(w.end)); }
 function overlap(aStart,aEnd,bStart,bEnd){ return aStart < bEnd && aEnd > bStart; }
 function makeSlotId(dateKey,time){ return `${dateKey}T${time}`; }
-
 function parseGraphDateTime(value, timeZone){
   if(!value) return null;
   const s=String(value);
   if(/[zZ]$|[+-]\d\d:\d\d$/.test(s)) return new Date(s);
-  // calendarView is requested with Prefer: outlook.timezone="UTC", so Graph returns UTC wall time without a Z.
   if(!timeZone || String(timeZone).toUpperCase()==='UTC') return new Date(s+'Z');
-  // Conservative fallback: treat unknown Graph wall time as UTC rather than visitor/server local time.
   return new Date(s+'Z');
 }
-function eventTimes(ev){
-  return {
-    start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone),
-    end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)
-  };
-}
+function eventTimes(ev){ return {start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone), end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)}; }
 
 export function buildBaseGrid(now=new Date()){
   const start = startOfLondonWeek(now);
@@ -85,24 +77,12 @@ export function buildBaseGrid(now=new Date()){
         const noticeOk = startUtc > min;
         if(!withinIntro) reasons.push('outside_intro_window');
         if(!noticeOk) reasons.push('minimum_notice');
-        cells.push({
-          id:makeSlotId(dateKey,time),
-          londonDate:dateKey,
-          londonTime:time,
-          startUtc:startUtc.toISOString(),
-          endUtc:endUtc.toISOString(),
-          withinIntro,
-          noticeOk,
-          blockers:[],
-          reasons,
-          bookable:false
-        });
+        cells.push({id:makeSlotId(dateKey,time),londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false});
       }
     }
   }
   return cells;
 }
-
 export function applyEvents(cells,events=[]){
   for(const ev of events){
     const showAs = String(ev.showAs || 'busy').trim();
@@ -120,7 +100,6 @@ export function applyEvents(cells,events=[]){
   for(const cell of cells){ cell.bookable = cell.withinIntro && cell.noticeOk && cell.blockers.length===0; }
   return cells;
 }
-
 async function token(env){
   const body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});
   const r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});
@@ -129,11 +108,7 @@ async function token(env){
 }
 export async function graph(env,path,method='GET',body=null){
   const t=await token(env);
-  const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{
-    method,
-    headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},
-    body:body?JSON.stringify(body):undefined
-  });
+  const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},body:body?JSON.stringify(body):undefined});
   if(!r.ok) throw new Error(await r.text());
   if(r.status===204) return {};
   return r.json();
@@ -153,9 +128,7 @@ export async function buildAvailability(env){
   const now=new Date();
   const cells=buildBaseGrid(now);
   if(!liveReady(env)){
-    for(const c of cells){
-      c.bookable = c.withinIntro && c.noticeOk && ['08:30','10:00','11:30','16:30','17:00'].includes(c.londonTime) && Number(c.londonDate.slice(-2))%2===0;
-    }
+    for(const c of cells){ c.bookable = c.withinIntro && c.noticeOk && ['08:30','10:00','11:30','16:30','17:00'].includes(c.londonTime) && Number(c.londonDate.slice(-2))%2===0; }
     return { live:false, pulledAt:now.toISOString(), cells };
   }
   const rangeStart=new Date(cells[0].startUtc);

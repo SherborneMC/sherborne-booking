@@ -1,4 +1,4 @@
-# Sherborne Booking v12
+# Sherborne Booking v13
 
 Cloudflare Pages booking site for introductory consultations.
 
@@ -29,14 +29,13 @@ Cloudflare Pages booking site for introductory consultations.
 - `Calendars.ReadWrite`
 - `Mail.Send`
 
-Grant admin consent after adding permissions.
+## v13 changes
 
-## v12 changes
-
-- Shared calendar/grid logic moved to `functions/_shared/calendar.js`.
-- Visitor-facing grid now renders from UTC slot times into the visitor's local timezone.
-- Backend still applies all rules in London/Sherborne time.
-- Mobile swipe now crosses week boundaries or falls back cleanly to arrow buttons.
-- Added accessibility labels and live regions.
-
-Deployment refresh.
+- Heading changed to “Introductory consultations”.
+- Added a calm “Later availability” divider between morning and late-afternoon rows.
+- Border colour strengthened to match the faint version text colour.
+- Smaller screens now centre the page heading, date heading and footer elements.
+- Swipe/drag handling strengthened while preserving vertical scrolling.
+- During refresh, the site heading briefly changes to “Updating available times…”.
+- Mobile request slots are slightly taller.
+- Empty day cells receive a very faint dash so the grid does not look broken.

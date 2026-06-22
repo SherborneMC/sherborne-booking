@@ -21,11 +21,8 @@ async function sendMichaelEmail(env,details){
     <p>We are pleased to confirm your requested introductory consultation. Michael looks forward to speaking with you.</p>
     <p>The tentative diary hold has been created. Confirm manually in Outlook if you wish to proceed.</p>
   `;
-  await graph(env,`/users/${encodeURIComponent(email)}/sendMail`,'POST',{
-    message:{subject,body:{contentType:'HTML',content},toRecipients:[{emailAddress:{address:email}}]},saveToSentItems:true
-  });
+  await graph(env,`/users/${encodeURIComponent(email)}/sendMail`,'POST',{message:{subject,body:{contentType:'HTML',content},toRecipients:[{emailAddress:{address:email}}]},saveToSentItems:true});
 }
-
 export async function onRequestPost({request,env}){
   let step='start';
   try{
@@ -48,10 +45,7 @@ export async function onRequestPost({request,env}){
       body:{contentType:'HTML',content:`<p>${visitorText}</p>`},
       start:{dateTime:start.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},
       end:{dateTime:end.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},
-      attendees,
-      showAs:'tentative',
-      isReminderOn:true,
-      reminderMinutesBeforeStart:60
+      attendees,showAs:'tentative',isReminderOn:true,reminderMinutesBeforeStart:60
     });
     step='emailing Michael';
     try{ await sendMichaelEmail(env,{startUtc:slot.startUtc,name,email,phone,message,otherName,otherEmail}); }catch(mailErr){ console.log('Michael email failed', mailErr.message); }
