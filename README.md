@@ -38,3 +38,5 @@ Grant admin consent after adding permissions.
 - Backend still applies all rules in London/Sherborne time.
 - Mobile swipe now crosses week boundaries or falls back cleanly to arrow buttons.
 - Added accessibility labels and live regions.
+
+Deployment refresh.
