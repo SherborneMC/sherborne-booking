@@ -1,64 +1,133 @@
-
 import { buildAvailability, escapeHtml, graph, json, liveReady, owner, validEmail, BUSINESS_TIME_ZONE } from '../_shared/calendar.js';
 
-function plainDateForMichael(iso){
-  return new Date(iso).toLocaleString('en-GB',{timeZone:BUSINESS_TIME_ZONE,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+function formatInZone(iso, timeZone){
+  return new Date(iso).toLocaleString('en-GB',{timeZone,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
 }
-function requesterLabel(details){ return details.name ? `${details.name} (${details.email})` : details.email; }
-function eventBodyForRequester(){
-  return '<p>Thank you for your request. We will confirm shortly and have provided a provisional hold for your diary.</p>';
+
+function timeSummary(iso, clientTimeZone){
+  const michaelTime = formatInZone(iso, BUSINESS_TIME_ZONE);
+  if(clientTimeZone && clientTimeZone !== BUSINESS_TIME_ZONE){
+    return `${formatInZone(iso, clientTimeZone)} (${BUSINESS_TIME_ZONE}: ${michaelTime})`;
+  }
+  return michaelTime;
 }
-function eventBodyForAssistant(details){
-  return `<p>This introductory consultation request has been shared with you at the request of ${escapeHtml(requesterLabel(details))}.</p><p>It relates to a proposed introductory consultation with Michael at Sherborne. A provisional diary hold is attached for convenience. Sherborne will confirm the arrangement shortly.</p>`;
+
+function requesterLabel(details){
+  return details.name ? `${details.name} (${details.email})` : details.email;
 }
+
+function eventBodyForRequester(details){
+  return `
+Thank you for your request. We will confirm shortly and have provided a provisional hold for your diary.
+
+Requested time: ${escapeHtml(timeSummary(details.startUtc, details.clientTimeZone))}
+`;
+}
+
 async function sendMichaelEmail(env,details){
   const email=owner(env);
   const subject='Booking request — introductory consultation';
+  const assistantLine = details.assistantEmail ? `
+Assistant copied on confirmation email: ${escapeHtml(details.assistantEmail)}
+` : '';
   const content=`
-    <p>New introductory consultation request received.</p>
-    <p><strong>Requested time:</strong> ${escapeHtml(plainDateForMichael(details.startUtc))}</p>
-    <p><strong>Name:</strong> ${escapeHtml(details.name)}</p>
-    <p><strong>Email:</strong> ${escapeHtml(details.email)}</p>
-    <p><strong>Phone:</strong> ${escapeHtml(details.phone)}</p>
-    ${details.otherEmail ? `<p><strong>Assistant copied:</strong> ${escapeHtml(details.otherName)} ${escapeHtml(details.otherEmail)}</p>` : ''}
-    <p><strong>What would be most helpful to explore?</strong></p>
-    <p>${escapeHtml(details.message)}</p>
-    <hr>
-    <p>Suggested confirmation wording:</p>
-    <p>We are pleased to confirm your requested introductory consultation. Michael looks forward to speaking with you.</p>
-    <p>The tentative diary hold has been created. Confirm manually in Outlook if you wish to proceed.</p>
-  `;
-  await graph(env,`/users/${encodeURIComponent(email)}/sendMail`,'POST',{message:{subject,body:{contentType:'HTML',content},toRecipients:[{emailAddress:{address:email}}]},saveToSentItems:true});
+New introductory consultation request received.
+
+Requested time: ${escapeHtml(timeSummary(details.startUtc, details.clientTimeZone))}
+${details.clientTimeZone && details.clientTimeZone !== BUSINESS_TIME_ZONE ? `Client timezone: ${escapeHtml(details.clientTimeZone)}\nMichael timezone: ${escapeHtml(BUSINESS_TIME_ZONE)}\n` : ''}
+Name: ${escapeHtml(details.name)}
+Email: ${escapeHtml(details.email)}
+Phone: ${escapeHtml(details.phone)}
+${assistantLine}
+What would be most helpful to explore?
+${escapeHtml(details.message)}
+
+Suggested confirmation wording:
+We are pleased to confirm your requested introductory consultation. Michael looks forward to speaking with you.
+
+The tentative diary hold has been created. Confirm manually in Outlook if you wish to proceed.
+`;
+
+  await graph(env,`/users/${encodeURIComponent(email)}/sendMail`,'POST',{
+    message:{
+      subject,
+      body:{contentType:'HTML',content},
+      toRecipients:[{emailAddress:{address:email}}]
+    },
+    saveToSentItems:true
+  });
 }
+
 export async function onRequestPost({request,env}){
   let step='start';
+  let createdEventId=null;
   try{
     const body = await request.json();
-    const {slotId,name,email,phone,message,otherName,otherEmail}=body;
+    const {slotId,name,email,phone,message,otherEmail,clientTimeZone}=body;
+    const assistantEmail=String(otherEmail||'').trim();
+
     if(!slotId || !validEmail(email) || String(phone||'').trim().length<7 || !String(message||'').trim() || !String(name||'').trim()) return json({error:'Missing details'},400);
-    if(otherEmail && !validEmail(otherEmail)) return json({error:'Other email invalid'},400);
+    if(assistantEmail && !validEmail(assistantEmail)) return json({error:'Assistant email invalid'},400);
     if(!liveReady(env)) return json({ok:true,sample:true,slotId});
+
     step='checking availability';
     const result=await buildAvailability(env);
     const slot=result.cells.find(c=>c.id===slotId);
     if(!slot || !slot.bookable) return json({error:'Slot unavailable'},409);
+
     const start=new Date(slot.startUtc), end=new Date(slot.endUtc);
-    const visitorText = otherEmail ? eventBodyForAssistant({name,email,otherName,otherEmail}) : eventBodyForRequester();
+    const visitorText = eventBodyForRequester({startUtc:slot.startUtc, clientTimeZone, name, email});
     const attendees=[{emailAddress:{address:email,name:name||email},type:'required'}];
-    if(otherEmail) attendees.push({emailAddress:{address:otherEmail,name:otherName||otherEmail},type:'optional'});
+
     step='creating calendar hold';
-    await graph(env,`/users/${encodeURIComponent(owner(env))}/events`,'POST',{
-      subject:`Introductory consultation request — ${name} — ${email}`,
-      body:{contentType:'HTML',content:visitorText},
+    const event=await graph(env,`/users/${encodeURIComponent(owner(env))}/events`,'POST',{
+      subject:`ACTION REQUIRED — introductory consultation request — ${name} — ${email}`,
+      body:{contentType:'HTML',content:`${visitorText}
+
+Requester details:
+Name: ${escapeHtml(name)}
+Email: ${escapeHtml(email)}
+Phone: ${escapeHtml(phone)}
+${assistantEmail ? `Assistant email for confirmation: ${escapeHtml(assistantEmail)}\n` : ''}
+What would be most helpful to explore?
+${escapeHtml(message)}
+`},
       start:{dateTime:start.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},
       end:{dateTime:end.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},
-      attendees,showAs:'tentative',isReminderOn:true,reminderMinutesBeforeStart:60
+      attendees,
+      showAs:'tentative',
+      isReminderOn:true,
+      reminderMinutesBeforeStart:60
     });
+    createdEventId=event.id || null;
+
     step='emailing Michael';
-    try{ await sendMichaelEmail(env,{startUtc:slot.startUtc,name,email,phone,message,otherName,otherEmail}); }catch(mailErr){ console.log('Michael email failed', mailErr.message); }
-    return json({ok:true,slotId});
+    await sendMichaelEmail(env,{startUtc:slot.startUtc,name,email,phone,message,assistantEmail,clientTimeZone});
+
+    if(assistantEmail){
+      step='copying assistant';
+      await graph(env,`/users/${encodeURIComponent(owner(env))}/sendMail`,'POST',{
+        message:{
+          subject:'Introductory consultation request shared with you',
+          body:{contentType:'HTML',content:`
+This introductory consultation request has been shared with you at the request of ${escapeHtml(requesterLabel({name,email}))}.
+
+Requested time: ${escapeHtml(timeSummary(slot.startUtc, clientTimeZone))}
+
+Sherborne will confirm the arrangement shortly.
+`},
+          toRecipients:[{emailAddress:{address:assistantEmail}}]
+        },
+        saveToSentItems:true
+      });
+    }
+
+    return json({ok:true,slotId,eventId:createdEventId});
   }catch(e){
     console.log('Booking error at '+step, e.message);
+    if(step==='emailing Michael' && createdEventId){
+      return json({error:'Booking hold created but Michael notification failed',eventId:createdEventId},502);
+    }
     return json({error:'Booking unavailable at '+step},500);
   }
 }
