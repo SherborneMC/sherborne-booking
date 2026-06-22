@@ -1,0 +1,15 @@
+{
+  "name": "sherborne-consultation-calendar",
+  "version": "17.0.0",
+  "private": true,
+  "description": "Sherborne CMC introductory consultation booking page with Microsoft Graph integration.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public --compatibility-date=2026-06-22",
+    "deploy": "wrangler pages deploy public",
+    "check": "node --check functions/_shared/calendar.js && node --check functions/api/slots.js && node --check functions/api/book.js && node --check functions/api/alternative.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
