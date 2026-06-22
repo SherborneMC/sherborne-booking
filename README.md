@@ -11,7 +11,7 @@ Cloudflare Pages booking site for introductory consultations.
 - `MS_TENANT_ID`
 - `MS_CLIENT_ID`
 - `MS_CLIENT_SECRET`
-- `OWNER_EMAIL`
+- `OWNER_EMAIL` 
 
 ## Required Microsoft Graph application permissions
 - `Calendars.ReadWrite`
