@@ -1,32 +1,12 @@
-
-import { graph } from '../_shared/calendar.js';
-
+import { graph, json, owner, validEmail } from '../_shared/calendar.js';
 export async function onRequestPost({request,env}){
   try{
-    const b = await request.json();
-
-    await graph(env, `/users/${encodeURIComponent(env.OWNER_EMAIL)}/sendMail`, 'POST', {
-      message:{
-        subject:'Alt request',
-        body:{contentType:'HTML',content:'alternative'},
-        toRecipients:[{emailAddress:{address:env.OWNER_EMAIL}}]
-      }
-    });
-
-    // client + assistant
-    const recipients=[{emailAddress:{address:b.email}}];
-    if(b.otherEmail) recipients.push({emailAddress:{address:b.otherEmail}});
-
-    await graph(env, `/users/${encodeURIComponent(env.OWNER_EMAIL)}/sendMail`, 'POST', {
-      message:{
-        subject:'Received',
-        body:{contentType:'HTML',content:'Thank you'},
-        toRecipients:recipients
-      }
-    });
-
-    return new Response(JSON.stringify({ok:true}));
-  }catch(e){
-    return new Response(JSON.stringify({error:e.message}),{status:500});
-  }
+    const b=await request.json();
+    if(!validEmail(b.email)) return json({error:'Invalid'},400);
+    await graph(env,`/users/${encodeURIComponent(owner(env))}/sendMail`,'POST',{
+      message:{subject:'Alternative request',body:{contentType:'HTML',content:b.message},toRecipients:[{emailAddress:{address:owner(env)}}]}},);
+    await graph(env,`/users/${encodeURIComponent(owner(env))}/sendMail`,'POST',{
+      message:{subject:'Request received',body:{contentType:'HTML',content:'Thank you. We will respond shortly.'},toRecipients:[{emailAddress:{address:b.email}}],ccRecipients:b.otherEmail?[{emailAddress:{address:b.otherEmail}}]:[]}},);
+    return json({ok:true});
+  }catch(e){return json({error:e.message},500)}
 }
