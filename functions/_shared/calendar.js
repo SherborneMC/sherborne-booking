@@ -1,139 +1,26 @@
 
-export const BUSINESS_TIME_ZONE = 'Europe/London';
-export const SLOT_MINUTES = 30;
-export const WEEKS_TO_SHOW = 4;
-export const OWNER_DEFAULT = 'michael@sherbornecmc.com';
-export const INTRO_WINDOWS = [
-  { start: '08:00', end: '12:00' },
-  { start: '16:30', end: '17:30' }
-];
-export const BLOCKING_SHOW_AS = new Set(['busy', 'oof', 'workingElsewhere', 'unknown']);
-
-export function owner(env){ return env.OWNER_EMAIL || OWNER_DEFAULT; }
-export function liveReady(env){ return Boolean(env.MS_TENANT_ID && env.MS_CLIENT_ID && env.MS_CLIENT_SECRET && owner(env)); }
-export function json(body,status=200){ return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}}); }
-export function escapeHtml(s){ return String(s || '').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
-export function validEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim()); }
-function pad(n){ return String(n).padStart(2,'0'); }
-
-export function londonParts(date){
-  const parts = new Intl.DateTimeFormat('en-GB',{
-    timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit',
-    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-  }).formatToParts(date).reduce((a,p)=>{ if(p.type!=='literal') a[p.type]=p.value; return a; },{});
-  return { year:+parts.year, month:+parts.month, day:+parts.day, hour:+parts.hour, minute:+parts.minute, second:+parts.second };
-}
-function addDaysLocal(y,m,d,n){ const dt = new Date(Date.UTC(y,m-1,d+n,12,0,0)); return londonParts(dt); }
-function startOfLondonWeek(date){
-  const p = londonParts(date);
-  const noon = new Date(Date.UTC(p.year,p.month-1,p.day,12,0,0));
-  const dow = new Intl.DateTimeFormat('en-GB',{timeZone:BUSINESS_TIME_ZONE,weekday:'short'}).format(noon);
-  const idx = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(dow);
-  return addDaysLocal(p.year,p.month,p.day,-idx);
-}
-function londonWallTimeToUtc(dateKey,time){
-  const [y,m,d] = dateKey.split('-').map(Number);
-  const [hh,mm] = time.split(':').map(Number);
-  let guess = new Date(Date.UTC(y,m-1,d,hh,mm,0,0));
-  for(let i=0;i<3;i++){
-    const p = londonParts(guess);
-    const asIfUtc = Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second||0,0);
-    const target = Date.UTC(y,m-1,d,hh,mm,0,0);
-    const diff = asIfUtc - target;
-    if(diff===0) break;
-    guess = new Date(guess.getTime() - diff);
-  }
-  return guess;
-}
-function minutesOf(time){ const [h,m]=time.split(':').map(Number); return h*60+m; }
-function addMinutesTime(time,mins){ const total=minutesOf(time)+mins; return `${pad(Math.floor(total/60))}:${pad(total%60)}`; }
-function inIntroWindow(time){ const m=minutesOf(time); return INTRO_WINDOWS.some(w=>m>=minutesOf(w.start) && m<minutesOf(w.end)); }
-function overlap(aStart,aEnd,bStart,bEnd){ return aStart < bEnd && aEnd > bStart; }
-function makeSlotId(dateKey,time){ return `${dateKey}T${time}`; }
-function parseGraphDateTime(value, timeZone){
-  if(!value) return null;
-  const s=String(value);
-  if(/[zZ]$|[+-]\d\d:\d\d$/.test(s)) return new Date(s);
-  if(!timeZone || String(timeZone).toUpperCase()==='UTC') return new Date(s+'Z');
-  return new Date(s+'Z');
-}
-function eventTimes(ev){ return {start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone), end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)}; }
-
-export function buildBaseGrid(now=new Date()){
-  const start = startOfLondonWeek(now);
-  const min = new Date(now.getTime()+4*60*60*1000);
-  const cells=[];
-  for(let w=0; w<WEEKS_TO_SHOW; w++){
-    for(let i=0; i<5; i++){
-      const p = addDaysLocal(start.year,start.month,start.day,w*7+i);
-      const dateKey = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
-      for(let m=8*60; m<20*60; m+=SLOT_MINUTES){
-        const time = `${pad(Math.floor(m/60))}:${pad(m%60)}`;
-        const endTime = addMinutesTime(time,SLOT_MINUTES);
-        const startUtc = londonWallTimeToUtc(dateKey,time);
-        const endUtc = londonWallTimeToUtc(dateKey,endTime);
-        const reasons=[];
-        const withinIntro = inIntroWindow(time);
-        const noticeOk = startUtc > min;
-        if(!withinIntro) reasons.push('outside_intro_window');
-        if(!noticeOk) reasons.push('minimum_notice');
-        cells.push({id:makeSlotId(dateKey,time),londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false});
-      }
-    }
-  }
-  return cells;
-}
-export function applyEvents(cells,events=[]){
-  for(const ev of events){
-    const showAs = String(ev.showAs || 'busy').trim();
-    if(!BLOCKING_SHOW_AS.has(showAs)) continue;
-    const {start,end}=eventTimes(ev);
-    if(!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
-    for(const cell of cells){
-      const cs=new Date(cell.startUtc), ce=new Date(cell.endUtc);
-      if(overlap(cs,ce,start,end)){
-        cell.blockers.push({showAs, subject: ev.subject || ''});
-        if(!cell.reasons.includes('outlook_blocker')) cell.reasons.push('outlook_blocker');
-      }
-    }
-  }
-  for(const cell of cells){ cell.bookable = cell.withinIntro && cell.noticeOk && cell.blockers.length===0; }
-  return cells;
-}
-async function token(env){
-  const body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});
-  const r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});
-  if(!r.ok) throw new Error('Calendar connection failed: token');
-  return (await r.json()).access_token;
-}
-export async function graph(env,path,method='GET',body=null){
-  const t=await token(env);
-  const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},body:body?JSON.stringify(body):undefined});
-  if(!r.ok) throw new Error(await r.text());
-  if(r.status===204) return {};
-  return r.json();
-}
-async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
-  const email = owner(env);
-  let events=[];
-  let path=`/users/${encodeURIComponent(email)}/calendarView?startDateTime=${encodeURIComponent(rangeStartUtc.toISOString())}&endDateTime=${encodeURIComponent(rangeEndUtc.toISOString())}&$select=subject,start,end,showAs,isCancelled&$top=1000`;
-  while(path){
-    const data=await graph(env,path);
-    events.push(...(data.value||[]).filter(e=>!e.isCancelled));
-    path = data['@odata.nextLink'] ? data['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0','') : null;
-  }
-  return events;
-}
-export async function buildAvailability(env){
-  const now=new Date();
-  const cells=buildBaseGrid(now);
-  if(!liveReady(env)){
-    for(const c of cells){ c.bookable = c.withinIntro && c.noticeOk && ['08:30','10:00','11:30','16:30','17:00'].includes(c.londonTime) && Number(c.londonDate.slice(-2))%2===0; }
-    return { live:false, pulledAt:now.toISOString(), cells };
-  }
-  const rangeStart=new Date(cells[0].startUtc);
-  const rangeEnd=new Date(cells[cells.length-1].endUtc);
-  const events=await fetchEvents(env,rangeStart,rangeEnd);
-  applyEvents(cells,events);
-  return { live:true, pulledAt:now.toISOString(), cells };
-}
+export const BUSINESS_TIME_ZONE='Europe/London';
+export const OWNER_DEFAULT='michael@sherbornecmc.com';
+export const BLOCKING_SHOW_AS=new Set(['busy','oof','workingElsewhere','unknown']);
+export function owner(env){return env.OWNER_EMAIL||OWNER_DEFAULT}
+export function liveReady(env){return Boolean(env.MS_TENANT_ID&&env.MS_CLIENT_ID&&env.MS_CLIENT_SECRET&&owner(env))}
+export function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}})}
+export function escapeHtml(s){return String(s||'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
+export function validEmail(s){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim())}
+const pad=n=>String(n).padStart(2,'0');
+function parts(date){const x=new Intl.DateTimeFormat('en-GB',{timeZone:BUSINESS_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(date).reduce((a,p)=>{if(p.type!=='literal')a[p.type]=p.value;return a},{});return{year:+x.year,month:+x.month,day:+x.day,weekday:x.weekday,hour:+x.hour,minute:+x.minute,second:+x.second}}
+function addDaysLocal(y,m,d,n){return parts(new Date(Date.UTC(y,m-1,d+n,12,0,0)))}
+function startOfLondonWeek(date){const p=parts(date);const idx=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(p.weekday);return addDaysLocal(p.year,p.month,p.day,-idx)}
+function wallToUtc(dateKey,time){const[y,m,d]=dateKey.split('-').map(Number),[hh,mm]=time.split(':').map(Number);let guess=new Date(Date.UTC(y,m-1,d,hh,mm,0,0));for(let i=0;i<3;i++){const p=parts(guess),asIf=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second||0,0),target=Date.UTC(y,m-1,d,hh,mm,0,0),diff=asIf-target;if(diff===0)break;guess=new Date(guess.getTime()-diff)}return guess}
+function minOf(t){const[h,m]=t.split(':').map(Number);return h*60+m}
+function addMin(t,n){const x=minOf(t)+n;return `${pad(Math.floor(x/60))}:${pad(x%60)}`}
+function slotAllowed(weekday,time){const allMorning=['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','16:30','17:00'];const rules={Mon:allMorning,Tue:['08:00','08:30','09:00','11:30','16:30','17:00'],Wed:['08:00','08:30','09:00','11:30','16:30','17:00'],Thu:['09:30','10:00','10:30','11:00','11:30','16:30'],Fri:['08:00','10:30','11:00','11:30']};return (rules[weekday]||[]).includes(time)}
+function overlap(a,b,c,d){return a<d&&b>c}
+function parseGraph(v,tz){if(!v)return null;const s=String(v);if(/[zZ]$|[+-]\d\d:\d\d$/.test(s))return new Date(s);return new Date(s+'Z')}
+function eventTimes(e){return{start:parseGraph(e.start?.dateTime,e.start?.timeZone),end:parseGraph(e.end?.dateTime,e.end?.timeZone)}}
+export function buildBaseGrid(now=new Date()){const start=startOfLondonWeek(now),min=new Date(now.getTime()+4*60*60*1000),cells=[];for(let w=0;w<4;w++)for(let i=0;i<5;i++){const p=addDaysLocal(start.year,start.month,start.day,w*7+i),dateKey=`${p.year}-${pad(p.month)}-${pad(p.day)}`;for(let m=8*60;m<20*60;m+=30){const time=`${pad(Math.floor(m/60))}:${pad(m%60)}`,endTime=addMin(time,30),s=wallToUtc(dateKey,time),e=wallToUtc(dateKey,endTime),withinIntro=slotAllowed(p.weekday,time),noticeOk=s>min,reasons=[];if(!withinIntro)reasons.push('outside_intro_rule');if(!noticeOk)reasons.push('minimum_notice');cells.push({id:`${dateKey}T${time}`,londonDate:dateKey,londonTime:time,londonWeekday:p.weekday,startUtc:s.toISOString(),endUtc:e.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false})}}return cells}
+export function applyEvents(cells,events=[]){for(const ev of events){const showAs=String(ev.showAs||'busy').trim();if(!BLOCKING_SHOW_AS.has(showAs))continue;const{start,end}=eventTimes(ev);if(!start||!end||Number.isNaN(start)||Number.isNaN(end))continue;for(const c of cells){if(overlap(new Date(c.startUtc),new Date(c.endUtc),start,end)){c.blockers.push({showAs,subject:ev.subject||''});if(!c.reasons.includes('outlook_blocker'))c.reasons.push('outlook_blocker')}}}for(const c of cells)c.bookable=c.withinIntro&&c.noticeOk&&c.blockers.length===0;return cells}
+async function token(env){const body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});const r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});if(!r.ok)throw new Error('Calendar connection failed: token');return(await r.json()).access_token}
+export async function graph(env,path,method='GET',body=null){const t=await token(env);const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.status===204?{}:r.json()}
+async function fetchEvents(env,start,end){let events=[],path=`/users/${encodeURIComponent(owner(env))}/calendarView?startDateTime=${encodeURIComponent(start.toISOString())}&endDateTime=${encodeURIComponent(end.toISOString())}&$select=subject,start,end,showAs,isCancelled&$top=1000`;while(path){const d=await graph(env,path);events.push(...(d.value||[]).filter(e=>!e.isCancelled));path=d['@odata.nextLink']?d['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0',''):null}return events}
+export async function buildAvailability(env){const now=new Date(),cells=buildBaseGrid(now);if(!liveReady(env)){for(const c of cells)c.bookable=c.withinIntro&&c.noticeOk&&Number(c.londonDate.slice(-2))%2===0;return{live:false,pulledAt:now.toISOString(),cells}}const events=await fetchEvents(env,new Date(cells[0].startUtc),new Date(cells[cells.length-1].endUtc));applyEvents(cells,events);return{live:true,pulledAt:now.toISOString(),cells}}
