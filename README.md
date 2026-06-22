@@ -1,4 +1,4 @@
-# Sherborne Booking v15
+# Sherborne Booking v16
 
 Cloudflare Pages booking site for introductory consultations.
 
@@ -17,9 +17,11 @@ Cloudflare Pages booking site for introductory consultations.
 - `Calendars.ReadWrite`
 - `Mail.Send`
 
-## v15 changes
-- Weekday-specific introductory slot limits.
-- Alternative-time request link and form mode.
-- Alternative requests email Michael only and do not create calendar holds.
-- Optional “Where are you based?” field for alternative requests.
-- Hidden honeypot field silently discards likely bot submissions.
+## v16 changes
+- Alternative-time requests now use a separate `/api/alternative` endpoint.
+- Alternative-time requests never rebuild availability and never create a calendar hold.
+- Alternative-time row is now inside the calendar table as a final full-width row.
+- Alternative request sends Michael the full request, sends the client an acknowledgement, and sends the assistant note if supplied.
+- If Michael email succeeds but client/assistant acknowledgement fails, the site still shows success.
+- Normal slot requests now fail if Michael's notification email fails, as requested.
+- User-facing error changed to: “We could not complete your request. Please contact us.”
