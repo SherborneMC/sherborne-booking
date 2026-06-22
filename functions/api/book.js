@@ -1,4 +1,22 @@
 
-import { buildAvailability, escapeHtml, graph, json, liveReady, owner, plainLondon, sendMail, validEmail } from '../_shared/calendar.js';
-async function michaelSlotEmail(env,d){const html=`<p>New introductory consultation request received.</p><p><strong>Requested time:</strong> ${escapeHtml(plainLondon(d.startUtc))}</p><p><strong>Name:</strong> ${escapeHtml(d.name)}</p><p><strong>Email:</strong> ${escapeHtml(d.email)}</p><p><strong>Phone:</strong> ${escapeHtml(d.phone)}</p>${d.otherEmail?`<p><strong>Assistant copied:</strong> ${escapeHtml(d.otherName)} ${escapeHtml(d.otherEmail)}</p>`:''}<p><strong>What would be most helpful to explore?</strong></p><p>${escapeHtml(d.message)}</p><hr><p>Suggested confirmation wording:</p><p>We are pleased to confirm your requested introductory consultation. Michael looks forward to speaking with you.</p>`;await sendMail(env,owner(env),'Booking request — introductory consultation',html)}
-export async function onRequestPost({request,env}){let step='start';try{const b=await request.json();if(String(b.companyWebsite||'').trim())return json({ok:true});const{name,email,phone,message,otherName,otherEmail}=b;if(!b.slotId||!validEmail(email)||String(phone||'').trim().length<7||!String(message||'').trim()||!String(name||'').trim())return json({error:'Missing details'},400);if(otherEmail&&!validEmail(otherEmail))return json({error:'Assistant email invalid'},400);if(!liveReady(env))return json({ok:true,sample:true});step='checking availability';const r=await buildAvailability(env),slot=r.cells.find(c=>c.id===b.slotId);if(!slot||!slot.bookable)return json({error:'Slot unavailable'},409);step='creating calendar hold';const start=new Date(slot.startUtc),end=new Date(slot.endUtc),attendees=[{emailAddress:{address:email,name:name||email},type:'required'}];if(otherEmail)attendees.push({emailAddress:{address:otherEmail,name:otherName||otherEmail},type:'optional'});await graph(env,`/users/${encodeURIComponent(owner(env))}/events`,'POST',{subject:`Introductory consultation request — ${name} — ${email}`,body:{contentType:'HTML',content:'<p>Thank you for your request. We will confirm shortly and have provided a provisional hold for your diary.</p>'},start:{dateTime:start.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},end:{dateTime:end.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},attendees,showAs:'tentative',isReminderOn:true,reminderMinutesBeforeStart:60});step='emailing Michael';await michaelSlotEmail(env,{startUtc:slot.startUtc,name,email,phone,message,otherName,otherEmail});return json({ok:true,slotId:b.slotId})}catch(e){console.log('Booking error at '+step,e.message);return json({error:'Booking unavailable at '+step},500)}}
+import { graph } from '../_shared/calendar.js';
+
+export async function onRequestPost({request,env}){
+  try{
+    const b = await request.json();
+
+    await graph(env, `/users/${encodeURIComponent(env.OWNER_EMAIL)}/events`, 'POST', {
+      subject: 'Test booking',
+      start:{dateTime:new Date().toISOString(),timeZone:'UTC'},
+      end:{dateTime:new Date(Date.now()+1800000).toISOString(),timeZone:'UTC'}
+    });
+
+    await graph(env, `/users/${encodeURIComponent(env.OWNER_EMAIL)}/sendMail`, 'POST', {
+      message:{subject:'Booking request', body:{contentType:'HTML',content:'ok'}, toRecipients:[{emailAddress:{address:env.OWNER_EMAIL}}]}
+    });
+
+    return new Response(JSON.stringify({ok:true}));
+  }catch(e){
+    return new Response(JSON.stringify({error:e.message}),{status:500});
+  }
+}

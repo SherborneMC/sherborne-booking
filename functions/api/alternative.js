@@ -1,7 +1,32 @@
 
-import { escapeHtml, json, liveReady, owner, sendMail, validEmail } from '../_shared/calendar.js';
-const requester=d=>d.name?`${d.name} (${d.email})`:d.email;
-async function michaelAlternativeEmail(env,d){const html=`<p>Alternative introductory consultation time requested.</p><p><strong>Name:</strong> ${escapeHtml(d.name)}</p><p><strong>Email:</strong> ${escapeHtml(d.email)}</p><p><strong>Phone:</strong> ${escapeHtml(d.phone)}</p>${d.location?`<p><strong>Based in:</strong> ${escapeHtml(d.location)}</p>`:''}${d.otherEmail?`<p><strong>Assistant copied:</strong> ${escapeHtml(d.otherName)} ${escapeHtml(d.otherEmail)}</p>`:''}<p><strong>Preferred times in local time:</strong></p><p>${escapeHtml(d.preferredTimes)}</p><p><strong>What would be most helpful to explore?</strong></p><p>${escapeHtml(d.message)}</p>`;await sendMail(env,owner(env),'Alternative consultation time requested',html)}
-async function clientAck(env,d){const html='<p>Thank you for your request. We will review the times you have shared and respond shortly.</p>';await sendMail(env,d.email,'Introductory consultation request received',html)}
-async function assistantAck(env,d){if(!d.otherEmail)return;const html=`<p>${escapeHtml(d.name)} has asked to arrange a time for an introductory consultation with Michael at Sherborne.</p><p>We will respond with availability shortly.</p>`;await sendMail(env,d.otherEmail,'Introductory consultation request shared with you',html)}
-export async function onRequestPost({request,env}){let step='start';try{const b=await request.json();if(String(b.companyWebsite||'').trim())return json({ok:true});const{name,email,phone,message,preferredTimes,location,otherName,otherEmail}=b;if(!validEmail(email)||String(phone||'').trim().length<7||!String(message||'').trim()||!String(name||'').trim()||!String(preferredTimes||'').trim())return json({error:'Missing details'},400);if(otherEmail&&!validEmail(otherEmail))return json({error:'Assistant email invalid'},400);if(!liveReady(env))return json({ok:true,sample:true});step='emailing Michael';await michaelAlternativeEmail(env,{name,email,phone,message,preferredTimes,location,otherName,otherEmail});try{await clientAck(env,{name,email})}catch(e){console.log('Client acknowledgement failed',e.message)}try{await assistantAck(env,{name,email,otherName,otherEmail})}catch(e){console.log('Assistant acknowledgement failed',e.message)}return json({ok:true})}catch(e){console.log('Alternative request error at '+step,e.message);return json({error:'Alternative request unavailable at '+step},500)}}
+import { graph } from '../_shared/calendar.js';
+
+export async function onRequestPost({request,env}){
+  try{
+    const b = await request.json();
+
+    await graph(env, `/users/${encodeURIComponent(env.OWNER_EMAIL)}/sendMail`, 'POST', {
+      message:{
+        subject:'Alt request',
+        body:{contentType:'HTML',content:'alternative'},
+        toRecipients:[{emailAddress:{address:env.OWNER_EMAIL}}]
+      }
+    });
+
+    // client + assistant
+    const recipients=[{emailAddress:{address:b.email}}];
+    if(b.otherEmail) recipients.push({emailAddress:{address:b.otherEmail}});
+
+    await graph(env, `/users/${encodeURIComponent(env.OWNER_EMAIL)}/sendMail`, 'POST', {
+      message:{
+        subject:'Received',
+        body:{contentType:'HTML',content:'Thank you'},
+        toRecipients:recipients
+      }
+    });
+
+    return new Response(JSON.stringify({ok:true}));
+  }catch(e){
+    return new Response(JSON.stringify({error:e.message}),{status:500});
+  }
+}
