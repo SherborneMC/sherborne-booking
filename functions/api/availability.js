@@ -1,24 +1,13 @@
-const ALL_TIMES=[];for(let h=8;h<=20;h++){ALL_TIMES.push(`${String(h).padStart(2,'0')}:00`);if(h<20)ALL_TIMES.push(`${String(h).padStart(2,'0')}:30`)}
-const BLOCKING=new Set(['busy','oof','workingElsewhere','unknown']);
-function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}})}
-function esc(v){return String(v||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}
-function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())}
-function graphDate(d){return d.toISOString().replace(/\.\d{3}Z$/,'')}
-function addM(d,m){return new Date(d.getTime()+m*60000)}
-function parts(d){let a=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d);let o=Object.fromEntries(a.map(p=>[p.type,p.value]));return{year:+o.year,month:+o.month,day:+o.day,hour:+o.hour,minute:+o.minute}}
-function ymd(y,m,d){return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
-function londonToUtc(y,m,d,h,mi){let g=new Date(Date.UTC(y,m-1,d,h,mi,0));for(let i=0;i<3;i++){let p=parts(g),seen=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,0),want=Date.UTC(y,m-1,d,h,mi,0);g=new Date(g.getTime()+want-seen)}return g}
-function mondayLondon(){let p=parts(new Date()),base=new Date(Date.UTC(p.year,p.month-1,p.day)),dow=base.getUTCDay(),diff=dow===0?-6:1-dow;base.setUTCDate(base.getUTCDate()+diff);return base}
-function addDaysYmd(y,m,d,n){let x=new Date(Date.UTC(y,m-1,d));x.setUTCDate(x.getUTCDate()+n);return{year:x.getUTCFullYear(),month:x.getUTCMonth()+1,day:x.getUTCDate()}}
-function eventStart(e){return new Date(e.start.dateTime+(e.start.dateTime.endsWith('Z')?'':'Z'))}
-function eventEnd(e){return new Date(e.end.dateTime+(e.end.dateTime.endsWith('Z')?'':'Z'))}
-function overlap(e,s,en){return s<eventEnd(e)&&en>eventStart(e)}
-function blocks(e){return BLOCKING.has(e.showAs||'busy')}
-async function token(env){let body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});let r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});if(!r.ok)throw Error('Microsoft access failed');return(await r.json()).access_token}
-async function graph(env,path,method='GET',body=null){let t=await token(env),r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error(await r.text());if(r.status===204)return{};return r.json()}
-async function events(env,owner,s,en){let path=`/users/${encodeURIComponent(owner)}/calendarView?startDateTime=${encodeURIComponent(s.toISOString())}&endDateTime=${encodeURIComponent(en.toISOString())}&$select=subject,start,end,showAs,isCancelled`;let out=[];while(path){let data=await graph(env,path.startsWith('https://graph.microsoft.com/v1.0')?path.replace('https://graph.microsoft.com/v1.0',''):path);out.push(...(data.value||[]));path=data['@odata.nextLink']||''}return out.filter(e=>!e.isCancelled)}
-function ready(env){return Boolean(env.MS_TENANT_ID&&env.MS_CLIENT_ID&&env.MS_CLIENT_SECRET&&(env.OWNER_EMAIL||'michael@sherbornecmc.com'))}
-function introAllowed(time){let [h,m]=time.split(':').map(Number),mins=h*60+m;return (mins>=480&&mins<720)||(mins>=990&&mins<1050)}
-function makeWeeksAndCells(eventsList){let base=mondayLondon(),cells=[],weeks=[],min=new Date(Date.now()+4*60*60*1000);for(let w=0;w<4;w++){let weekDays=[];for(let i=0;i<5;i++){let d=addDaysYmd(base.getUTCFullYear(),base.getUTCMonth()+1,base.getUTCDate(),w*7+i);let day=ymd(d.year,d.month,d.day);weekDays.push(day);for(let time of ALL_TIMES){let [h,mi]=time.split(':').map(Number),s=londonToUtc(d.year,d.month,d.day,h,mi),en=addM(s,30),over=eventsList.filter(e=>overlap(e,s,en)),blockers=over.filter(blocks),withinIntro=introAllowed(time),noticeOk=s>min,bookable=withinIntro&&noticeOk&&blockers.length===0;cells.push({id:`${day}T${time}`,day,time,dayLabel:new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long',timeZone:'Europe/London'}).format(s),startUtc:s.toISOString(),endUtc:en.toISOString(),bookable,reasons:{withinIntro,noticeOk,blockers:blockers.map(b=>b.showAs||'busy'),overlaps:over.length}})}}let first=new Date(weekDays[0]+'T00:00:00Z'),last=new Date(weekDays[4]+'T00:00:00Z');weeks.push({label:`${first.getUTCDate()} ${first.toLocaleString('en-GB',{month:'long',timeZone:'UTC'})} – ${last.getUTCDate()} ${last.toLocaleString('en-GB',{month:'long',timeZone:'UTC'})} ${last.getUTCFullYear()}`,days:weekDays})}return{weeks,cells}}
-async function buildGrid(env,owner){let base=mondayLondon(),start=londonToUtc(base.getUTCFullYear(),base.getUTCMonth()+1,base.getUTCDate(),0,0),end=addM(start,28*24*60),ev=await events(env,owner,start,end);return makeWeeksAndCells(ev)}
-export async function onRequestGet({env}){let pulledAt=new Date().toISOString();try{if(!ready(env))return json({live:false,pulledAt,weeks:[],cells:[]});let owner=env.OWNER_EMAIL||'michael@sherbornecmc.com',grid=await buildGrid(env,owner);return json({live:true,pulledAt,...grid})}catch(e){console.log('Availability error',e.message);return json({live:false,pulledAt,weeks:[],cells:[],error:'Calendar unavailable'},503)}}
+
+import { buildAvailability, buildBaseGrid, json } from '../_shared/calendar.js';
+
+export async function onRequestGet({env}){
+  try{
+    const result = await buildAvailability(env);
+    return json({ live:result.live, pulledAt:result.pulledAt, slots:result.cells });
+  }catch(e){
+    console.log('Availability error', e.message);
+    const cells=buildBaseGrid(new Date());
+    return json({ live:false, pulledAt:new Date().toISOString(), slots:cells, error:'Calendar unavailable' },503);
+  }
+}

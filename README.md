@@ -1,18 +1,40 @@
-# Sherborne Booking — array grid model v7
+# Sherborne Booking v12
 
-This version rebuilds the scheduler around a simple availability grid.
+Cloudflare Pages booking site for introductory consultations.
 
-Core model:
-- Four weeks of weekdays.
-- Each day has half-hour cells from 08:00 to 20:00 in Michael's Outlook / UK diary time.
-- Outlook calendar events are overlaid onto that grid.
-- Busy, out-of-office, working-elsewhere and unknown items block a cell.
-- Tentative items do not block a cell.
-- Introductory consultation rules are then overlaid on top.
-- The booking request sends the slot ID, and the server rebuilds the same grid before creating the diary hold.
+## Structure
 
-Cloudflare settings remain:
+- `public/index.html`
+- `functions/api/availability.js`
+- `functions/api/book.js`
+- `functions/_shared/calendar.js`
+- `_headers`
+- `.gitignore`
+
+## Cloudflare Pages settings
+
+- Framework preset: None
 - Build command: leave blank
-- Build output directory: public
+- Build output directory: `public`
 
-Private values stay in Cloudflare, not GitHub.
+## Required Cloudflare environment variables
+
+- `MS_TENANT_ID`
+- `MS_CLIENT_ID`
+- `MS_CLIENT_SECRET`
+- `OWNER_EMAIL`
+
+## Required Microsoft Graph application permissions
+
+- `Calendars.ReadWrite`
+- `Mail.Send`
+
+Grant admin consent after adding permissions.
+
+## v12 changes
+
+- Shared calendar/grid logic moved to `functions/_shared/calendar.js`.
+- Visitor-facing grid now renders from UTC slot times into the visitor's local timezone.
+- Backend still applies all rules in London/Sherborne time.
+- Mobile swipe now crosses week boundaries or falls back cleanly to arrow buttons.
+- Added accessibility labels and live regions.
