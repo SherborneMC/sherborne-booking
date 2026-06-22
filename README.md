@@ -1,4 +1,4 @@
-# Sherborne Booking v13
+# Sherborne Booking v14
 
 Cloudflare Pages booking site for introductory consultations.
 
@@ -29,13 +29,10 @@ Cloudflare Pages booking site for introductory consultations.
 - `Calendars.ReadWrite`
 - `Mail.Send`
 
-## v13 changes
+## v14 changes
 
-- Heading changed to “Introductory consultations”.
-- Added a calm “Later availability” divider between morning and late-afternoon rows.
-- Border colour strengthened to match the faint version text colour.
-- Smaller screens now centre the page heading, date heading and footer elements.
-- Swipe/drag handling strengthened while preserving vertical scrolling.
-- During refresh, the site heading briefly changes to “Updating available times…”.
-- Mobile request slots are slightly taller.
-- Empty day cells receive a very faint dash so the grid does not look broken.
+- Reworded optional copied-person section for assistant/EA/PA use.
+- Checkbox now says: “Share this request with my assistant”.
+- Assistant fields are labelled simply: “Name” and “Email”.
+- Calendar hold wording now distinguishes the requester from the assistant/copy recipient.
+- Version updated to v14.

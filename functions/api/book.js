@@ -4,6 +4,13 @@ import { buildAvailability, escapeHtml, graph, json, liveReady, owner, validEmai
 function plainDateForMichael(iso){
   return new Date(iso).toLocaleString('en-GB',{timeZone:BUSINESS_TIME_ZONE,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
+function requesterLabel(details){ return details.name ? `${details.name} (${details.email})` : details.email; }
+function eventBodyForRequester(){
+  return '<p>Thank you for your request. We will confirm shortly and have provided a provisional hold for your diary.</p>';
+}
+function eventBodyForAssistant(details){
+  return `<p>This introductory consultation request has been shared with you at the request of ${escapeHtml(requesterLabel(details))}.</p><p>It relates to a proposed introductory consultation with Michael at Sherborne. A provisional diary hold is attached for convenience. Sherborne will confirm the arrangement shortly.</p>`;
+}
 async function sendMichaelEmail(env,details){
   const email=owner(env);
   const subject='Booking request — introductory consultation';
@@ -13,7 +20,7 @@ async function sendMichaelEmail(env,details){
     <p><strong>Name:</strong> ${escapeHtml(details.name)}</p>
     <p><strong>Email:</strong> ${escapeHtml(details.email)}</p>
     <p><strong>Phone:</strong> ${escapeHtml(details.phone)}</p>
-    ${details.otherEmail ? `<p><strong>Also copied/requested:</strong> ${escapeHtml(details.otherName)} ${escapeHtml(details.otherEmail)}</p>` : ''}
+    ${details.otherEmail ? `<p><strong>Assistant copied:</strong> ${escapeHtml(details.otherName)} ${escapeHtml(details.otherEmail)}</p>` : ''}
     <p><strong>What would be most helpful to explore?</strong></p>
     <p>${escapeHtml(details.message)}</p>
     <hr>
@@ -36,13 +43,13 @@ export async function onRequestPost({request,env}){
     const slot=result.cells.find(c=>c.id===slotId);
     if(!slot || !slot.bookable) return json({error:'Slot unavailable'},409);
     const start=new Date(slot.startUtc), end=new Date(slot.endUtc);
+    const visitorText = otherEmail ? eventBodyForAssistant({name,email,otherName,otherEmail}) : eventBodyForRequester();
     const attendees=[{emailAddress:{address:email,name:name||email},type:'required'}];
     if(otherEmail) attendees.push({emailAddress:{address:otherEmail,name:otherName||otherEmail},type:'optional'});
-    const visitorText='Thank you for your request. We will confirm shortly and have provided a provisional hold for your diary.';
     step='creating calendar hold';
     await graph(env,`/users/${encodeURIComponent(owner(env))}/events`,'POST',{
       subject:`Introductory consultation request — ${name} — ${email}`,
-      body:{contentType:'HTML',content:`<p>${visitorText}</p>`},
+      body:{contentType:'HTML',content:visitorText},
       start:{dateTime:start.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},
       end:{dateTime:end.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},
       attendees,showAs:'tentative',isReminderOn:true,reminderMinutesBeforeStart:60
