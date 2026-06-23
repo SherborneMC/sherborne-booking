@@ -7,11 +7,22 @@ export const INTRO_WINDOWS = [
   { start: '16:30', end: '17:30' }
 ];
 export const BLOCKING_SHOW_AS = new Set(['busy', 'oof', 'workingElsewhere', 'unknown']);
-export function owner(env){ return env.OWNER_EMAIL || OWNER_DEFAULT; }
-export function liveReady(env){ return Boolean(env.MS_TENANT_ID && env.MS_CLIENT_ID && env.MS_CLIENT_SECRET && owner(env)); }
+
+function envValue(env, ...keys){
+  for(const key of keys){ if(env[key]) return env[key]; }
+  return '';
+}
+export function owner(env){ return envValue(env,'OWNER_EMAIL','CALENDAR_OWNER','MICHAEL_EMAIL') || OWNER_DEFAULT; }
+export function tenantId(env){ return envValue(env,'MS_TENANT_ID','TENANT_ID'); }
+export function clientId(env){ return envValue(env,'MS_CLIENT_ID','CLIENT_ID'); }
+export function clientSecret(env){ return envValue(env,'MS_CLIENT_SECRET','CLIENT_SECRET'); }
+export function liveReady(env){ return Boolean(tenantId(env) && clientId(env) && clientSecret(env) && owner(env)); }
 export function json(body,status=200){ return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}}); }
 export function escapeHtml(s){ return String(s || '').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
 export function validEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim()); }
+export function connectionDiagnostics(env){
+  return { hasTenantId:Boolean(tenantId(env)), hasClientId:Boolean(clientId(env)), hasClientSecret:Boolean(clientSecret(env)), owner:owner(env), liveReady:liveReady(env) };
+}
 function pad(n){ return String(n).padStart(2,'0'); }
 export function londonParts(date){
   const parts = new Intl.DateTimeFormat('en-GB',{timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).formatToParts(date).reduce((a,p)=>{ if(p.type!=='literal') a[p.type]=p.value; return a; },{});
@@ -92,8 +103,8 @@ export function applyEvents(cells,events=[]){
   return cells;
 }
 async function token(env){
-  const body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});
-  const r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});
+  const body=new URLSearchParams({client_id:clientId(env),client_secret:clientSecret(env),scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});
+  const r=await fetch(`https://login.microsoftonline.com/${tenantId(env)}/oauth2/v2.0/token`,{method:'POST',body});
   if(!r.ok) throw new Error('Calendar connection failed: token');
   return (await r.json()).access_token;
 }
