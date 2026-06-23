@@ -1,4 +1,3 @@
-
 export const BUSINESS_TIME_ZONE = 'Europe/London';
 export const SLOT_MINUTES = 30;
 export const WEEKS_TO_SHOW = 4;
@@ -8,19 +7,14 @@ export const INTRO_WINDOWS = [
   { start: '16:30', end: '17:30' }
 ];
 export const BLOCKING_SHOW_AS = new Set(['busy', 'oof', 'workingElsewhere', 'unknown']);
-
 export function owner(env){ return env.OWNER_EMAIL || OWNER_DEFAULT; }
 export function liveReady(env){ return Boolean(env.MS_TENANT_ID && env.MS_CLIENT_ID && env.MS_CLIENT_SECRET && owner(env)); }
 export function json(body,status=200){ return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}}); }
 export function escapeHtml(s){ return String(s || '').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
 export function validEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim()); }
 function pad(n){ return String(n).padStart(2,'0'); }
-
 export function londonParts(date){
-  const parts = new Intl.DateTimeFormat('en-GB',{
-    timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit',
-    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-  }).formatToParts(date).reduce((a,p)=>{ if(p.type!=='literal') a[p.type]=p.value; return a; },{});
+  const parts = new Intl.DateTimeFormat('en-GB',{timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).formatToParts(date).reduce((a,p)=>{ if(p.type!=='literal') a[p.type]=p.value; return a; },{});
   return { year:+parts.year, month:+parts.month, day:+parts.day, hour:+parts.hour, minute:+parts.minute, second:+parts.second };
 }
 function addDaysLocal(y,m,d,n){ const dt = new Date(Date.UTC(y,m-1,d+n,12,0,0)); return londonParts(dt); }
@@ -58,27 +52,24 @@ function parseGraphDateTime(value, timeZone){
   return new Date(s+'Z');
 }
 function eventTimes(ev){ return {start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone), end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)}; }
-
 export function buildBaseGrid(now=new Date()){
   const start = startOfLondonWeek(now);
   const min = new Date(now.getTime()+4*60*60*1000);
   const cells=[];
-  for(let w=0; w<WEEKS_TO_SHOW; w++){
-    for(let i=0; i<5; i++){
-      const p = addDaysLocal(start.year,start.month,start.day,w*7+i);
-      const dateKey = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
-      for(let m=8*60; m<20*60; m+=SLOT_MINUTES){
-        const time = `${pad(Math.floor(m/60))}:${pad(m%60)}`;
-        const endTime = addMinutesTime(time,SLOT_MINUTES);
-        const startUtc = londonWallTimeToUtc(dateKey,time);
-        const endUtc = londonWallTimeToUtc(dateKey,endTime);
-        const reasons=[];
-        const withinIntro = inIntroWindow(time);
-        const noticeOk = startUtc > min;
-        if(!withinIntro) reasons.push('outside_intro_window');
-        if(!noticeOk) reasons.push('minimum_notice');
-        cells.push({id:makeSlotId(dateKey,time),londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false});
-      }
+  for(let w=0; w<WEEKS_TO_SHOW; w++) for(let i=0; i<5; i++){
+    const p = addDaysLocal(start.year,start.month,start.day,w*7+i);
+    const dateKey = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+    for(let m=8*60; m<20*60; m+=SLOT_MINUTES){
+      const time = `${pad(Math.floor(m/60))}:${pad(m%60)}`;
+      const endTime = addMinutesTime(time,SLOT_MINUTES);
+      const startUtc = londonWallTimeToUtc(dateKey,time);
+      const endUtc = londonWallTimeToUtc(dateKey,endTime);
+      const reasons=[];
+      const withinIntro = inIntroWindow(time);
+      const noticeOk = startUtc > min;
+      if(!withinIntro) reasons.push('outside_intro_window');
+      if(!noticeOk) reasons.push('minimum_notice');
+      cells.push({id:makeSlotId(dateKey,time),londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false});
     }
   }
   return cells;
@@ -111,11 +102,7 @@ export async function graph(env,path,method='GET',body=null){
   const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},body:body?JSON.stringify(body):undefined});
   if(!r.ok) throw new Error(await r.text());
   const ct = r.headers.get('content-type') || '';
-
-  if (r.status === 202 || r.status === 204 || !ct.includes('application/json')) {
-    return {};
-  }
-
+  if (r.status === 202 || r.status === 204 || !ct.includes('application/json')) return {};
   return r.json();
 }
 async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
@@ -132,9 +119,7 @@ async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
 export async function buildAvailability(env){
   const now=new Date();
   const cells=buildBaseGrid(now);
-  if(!liveReady(env)){
-    return { live:false, pulledAt:now.toISOString(), cells };
-  }
+  if(!liveReady(env)) return { live:false, pulledAt:now.toISOString(), cells };
   const rangeStart=new Date(cells[0].startUtc);
   const rangeEnd=new Date(cells[cells.length-1].endUtc);
   const events=await fetchEvents(env,rangeStart,rangeEnd);

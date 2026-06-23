@@ -1,5 +1,4 @@
 import { buildAvailability, buildBaseGrid, json } from '../_shared/calendar.js';
-
 export async function onRequestGet({env}){
   try{
     const result = await buildAvailability(env);
