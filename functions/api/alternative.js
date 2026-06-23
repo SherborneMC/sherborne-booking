@@ -1,6 +1,6 @@
 import { escapeHtml, graph, json, owner, validEmail, BUSINESS_TIME_ZONE } from '../_shared/calendar.js';
 const CONTACT_URL='https://www.sherbornecmc.com/#contact';
-const CONFIRMATION_TEXT='Thank you, we will respond to your request for a consultation shortly.\n\nBest wishes,\nYour Sherborne Team';
+const CONFIRMATION_TEXT='Thank you, we will respond to your request for a consultation shortly.\n\nBest wishes,\nYour Sherborne Team\n\nIf you need to cancel, please contact us.';
 function htmlLines(s){ return escapeHtml(s).replaceAll('\n','<br>'); }
 function formatNowInZone(timeZone){return new Date().toLocaleString('en-GB',{timeZone,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});}
 function contactError(message,status=500){return json({error:message,contactUrl:CONTACT_URL},status);}

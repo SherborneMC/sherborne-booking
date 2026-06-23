@@ -1,6 +1,6 @@
 import { buildAvailability, escapeHtml, graph, json, liveReady, owner, validEmail, BUSINESS_TIME_ZONE } from '../_shared/calendar.js';
 const CONTACT_URL='https://www.sherbornecmc.com/#contact';
-const CONFIRMATION_TEXT='Thank you, we will respond to your request for a consultation shortly.\n\nBest wishes,\nYour Sherborne Team';
+const CONFIRMATION_TEXT='Thank you, we will respond to your request for a consultation shortly.\n\nBest wishes,\nYour Sherborne Team\n\nIf you need to cancel, please contact us.';
 function htmlLines(s){ return escapeHtml(s).replaceAll('\n','<br>'); }
 function formatInZone(iso,timeZone){return new Date(iso).toLocaleString('en-GB',{timeZone,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});}
 function timeSummary(iso,clientTimeZone){const sherborneTime=formatInZone(iso,BUSINESS_TIME_ZONE);return clientTimeZone&&clientTimeZone!==BUSINESS_TIME_ZONE?`${formatInZone(iso,clientTimeZone)} (Sherborne diary time: ${sherborneTime})`:sherborneTime;}
@@ -10,18 +10,7 @@ async function sendMichaelEmail(env,d){
   const email=owner(env);
   const timezoneLines=d.clientTimeZone&&d.clientTimeZone!==BUSINESS_TIME_ZONE?detailParagraph('Visitor timezone',d.clientTimeZone)+detailParagraph('Sherborne diary timezone',BUSINESS_TIME_ZONE):'';
   const assistantLine=d.assistantEmail?detailParagraph('Assistant copied on confirmation email',d.assistantEmail):'';
-  const content=`
-    <p>New introductory consultation request received.</p>
-    ${detailParagraph('Requested time',timeSummary(d.startUtc,d.clientTimeZone))}
-    ${timezoneLines}
-    ${detailParagraph('Name',d.name)}
-    ${detailParagraph('Email',d.email)}
-    ${detailParagraph('Phone',d.phone)}
-    ${assistantLine}
-    ${detailParagraph('What would be helpful to explore',d.message)}
-    <p><strong>Suggested confirmation wording:</strong><br>We are pleased to confirm your requested introductory consultation. Sherborne looks forward to speaking with you.</p>
-    <p>The tentative diary hold has been created. Confirm manually in Outlook if you wish to proceed.</p>
-  `;
+  const content=`<p>New introductory consultation request received.</p>${detailParagraph('Requested time',timeSummary(d.startUtc,d.clientTimeZone))}${timezoneLines}${detailParagraph('Name',d.name)}${detailParagraph('Email',d.email)}${detailParagraph('Phone',d.phone)}${assistantLine}${detailParagraph('What would be helpful to explore',d.message)}<p><strong>Suggested confirmation wording:</strong><br>We are pleased to confirm your requested introductory consultation. Sherborne looks forward to speaking with you.</p><p>The tentative diary hold has been created. Confirm manually in Outlook if you wish to proceed.</p>`;
   await graph(env,`/users/${encodeURIComponent(email)}/sendMail`,'POST',{message:{subject:'Booking request — introductory consultation',body:{contentType:'HTML',content},toRecipients:[{emailAddress:{address:email}}]},saveToSentItems:true});
 }
 async function sendClientConfirmationEmail(env,d){const cc=d.assistantEmail?[{emailAddress:{address:d.assistantEmail}}]:[];await graph(env,`/users/${encodeURIComponent(owner(env))}/sendMail`,'POST',{message:{subject:'Your request has been received',body:{contentType:'HTML',content:`<p>${htmlLines(CONFIRMATION_TEXT)}</p>`},toRecipients:[{emailAddress:{address:d.email}}],ccRecipients:cc},saveToSentItems:true});}
