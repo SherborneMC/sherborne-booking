@@ -57,7 +57,8 @@ export function buildBaseGrid(now=new Date(), clientType='new'){
   const start = startOfLondonWeek(now);
   const min = new Date(now.getTime()+4*60*60*1000);
   const cells=[];
-  const duration = clientType === 'existing' ? 60 : SLOT_MINUTES;
+  const normalized = clientType === 'existing' ? 'existing' : 'new';
+  const duration = normalized === 'existing' ? 60 : SLOT_MINUTES;
   for(let w=0; w<WEEKS_TO_SHOW; w++){
     for(let i=0; i<5; i++){
       const p = addDaysLocal(start.year,start.month,start.day,w*7+i);
@@ -69,17 +70,18 @@ export function buildBaseGrid(now=new Date(), clientType='new'){
         const startUtc = londonWallTimeToUtc(dateKey,time);
         const endUtc = londonWallTimeToUtc(dateKey,endTime);
         const reasons=[];
-        const withinIntro = clientType === 'existing' ? true : inIntroWindow(time);
+        const withinIntro = normalized === 'existing' ? true : inIntroWindow(time);
         const noticeOk = startUtc > min;
         if(!withinIntro) reasons.push('outside_intro_window');
         if(!noticeOk) reasons.push('minimum_notice');
-        cells.push({id:`${makeSlotId(dateKey,time)}-${duration}`,clientType,londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),durationMinutes:duration,withinIntro,noticeOk,blockers:[],reasons,bookable:false});
+        cells.push({id:`${makeSlotId(dateKey,time)}-${duration}`,clientType:normalized,londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),durationMinutes:duration,withinIntro,noticeOk,blockers:[],reasons,bookable:false});
       }
     }
   }
   return cells;
 }
 export function applyEvents(cells,events=[],clientType='new'){
+  const normalized = clientType === 'existing' ? 'existing' : 'new';
   for(const ev of events){
     const showAs = String(ev.showAs || 'busy').trim();
     if(!BLOCKING_SHOW_AS.has(showAs)) continue;
@@ -94,7 +96,7 @@ export function applyEvents(cells,events=[],clientType='new'){
     }
   }
   for(const cell of cells){
-    cell.bookable = clientType === 'existing'
+    cell.bookable = normalized === 'existing'
       ? cell.noticeOk && cell.blockers.length===0
       : cell.withinIntro && cell.noticeOk && cell.blockers.length===0;
   }
