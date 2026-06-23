@@ -1,3 +1,4 @@
+
 export const BUSINESS_TIME_ZONE = 'Europe/London';
 export const SLOT_MINUTES = 30;
 export const WEEKS_TO_SHOW = 4;
@@ -13,7 +14,6 @@ export function liveReady(env){ return Boolean(env.MS_TENANT_ID && env.MS_CLIENT
 export function json(body,status=200){ return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}}); }
 export function escapeHtml(s){ return String(s || '').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
 export function validEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim()); }
-
 function pad(n){ return String(n).padStart(2,'0'); }
 
 export function londonParts(date){
@@ -23,9 +23,7 @@ export function londonParts(date){
   }).formatToParts(date).reduce((a,p)=>{ if(p.type!=='literal') a[p.type]=p.value; return a; },{});
   return { year:+parts.year, month:+parts.month, day:+parts.day, hour:+parts.hour, minute:+parts.minute, second:+parts.second };
 }
-
 function addDaysLocal(y,m,d,n){ const dt = new Date(Date.UTC(y,m-1,d+n,12,0,0)); return londonParts(dt); }
-
 function startOfLondonWeek(date){
   const p = londonParts(date);
   const noon = new Date(Date.UTC(p.year,p.month-1,p.day,12,0,0));
@@ -33,7 +31,6 @@ function startOfLondonWeek(date){
   const idx = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(dow);
   return addDaysLocal(p.year,p.month,p.day,-idx);
 }
-
 function londonWallTimeToUtc(dateKey,time){
   const [y,m,d] = dateKey.split('-').map(Number);
   const [hh,mm] = time.split(':').map(Number);
@@ -48,13 +45,11 @@ function londonWallTimeToUtc(dateKey,time){
   }
   return guess;
 }
-
 function minutesOf(time){ const [h,m]=time.split(':').map(Number); return h*60+m; }
 function addMinutesTime(time,mins){ const total=minutesOf(time)+mins; return `${pad(Math.floor(total/60))}:${pad(total%60)}`; }
 function inIntroWindow(time){ const m=minutesOf(time); return INTRO_WINDOWS.some(w=>m>=minutesOf(w.start) && m<minutesOf(w.end)); }
 function overlap(aStart,aEnd,bStart,bEnd){ return aStart < bEnd && aEnd > bStart; }
 function makeSlotId(dateKey,time){ return `${dateKey}T${time}`; }
-
 function parseGraphDateTime(value, timeZone){
   if(!value) return null;
   const s=String(value);
@@ -62,7 +57,6 @@ function parseGraphDateTime(value, timeZone){
   if(!timeZone || String(timeZone).toUpperCase()==='UTC') return new Date(s+'Z');
   return new Date(s+'Z');
 }
-
 function eventTimes(ev){ return {start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone), end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)}; }
 
 export function buildBaseGrid(now=new Date()){
@@ -89,7 +83,6 @@ export function buildBaseGrid(now=new Date()){
   }
   return cells;
 }
-
 export function applyEvents(cells,events=[]){
   for(const ev of events){
     const showAs = String(ev.showAs || 'busy').trim();
@@ -107,19 +100,16 @@ export function applyEvents(cells,events=[]){
   for(const cell of cells){ cell.bookable = cell.withinIntro && cell.noticeOk && cell.blockers.length===0; }
   return cells;
 }
-
 async function token(env){
   const body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});
   const r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});
   if(!r.ok) throw new Error('Calendar connection failed: token');
   return (await r.json()).access_token;
 }
-
 export async function graph(env,path,method='GET',body=null){
   const t=await token(env);
   const r=await fetch(`https://graph.microsoft.com/v1.0${path}`,{method,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',Prefer:'outlook.timezone="UTC"'},body:body?JSON.stringify(body):undefined});
   if(!r.ok) throw new Error(await r.text());
-
   const ct = r.headers.get('content-type') || '';
 
   if (r.status === 202 || r.status === 204 || !ct.includes('application/json')) {
@@ -128,7 +118,6 @@ export async function graph(env,path,method='GET',body=null){
 
   return r.json();
 }
-
 async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
   const email = owner(env);
   let events=[];
@@ -140,12 +129,10 @@ async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
   }
   return events;
 }
-
 export async function buildAvailability(env){
   const now=new Date();
   const cells=buildBaseGrid(now);
   if(!liveReady(env)){
-    for(const c of cells){ c.bookable = c.withinIntro && c.noticeOk && ['08:30','10:00','11:30','16:30','17:00'].includes(c.londonTime) && Number(c.londonDate.slice(-2))%2===0; }
     return { live:false, pulledAt:now.toISOString(), cells };
   }
   const rangeStart=new Date(cells[0].startUtc);
