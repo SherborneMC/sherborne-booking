@@ -53,31 +53,33 @@ function parseGraphDateTime(value, timeZone){
   return new Date(s+'Z');
 }
 function eventTimes(ev){ return {start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone), end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)}; }
-export function buildBaseGrid(now=new Date()){
+export function buildBaseGrid(now=new Date(), clientType='new'){
   const start = startOfLondonWeek(now);
   const min = new Date(now.getTime()+4*60*60*1000);
   const cells=[];
+  const duration = clientType === 'existing' ? 60 : SLOT_MINUTES;
   for(let w=0; w<WEEKS_TO_SHOW; w++){
     for(let i=0; i<5; i++){
       const p = addDaysLocal(start.year,start.month,start.day,w*7+i);
       const dateKey = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
       for(let m=8*60; m<20*60; m+=SLOT_MINUTES){
         const time = `${pad(Math.floor(m/60))}:${pad(m%60)}`;
-        const endTime = addMinutesTime(time,SLOT_MINUTES);
+        const endTime = addMinutesTime(time,duration);
+        if(minutesOf(endTime)>20*60) continue;
         const startUtc = londonWallTimeToUtc(dateKey,time);
         const endUtc = londonWallTimeToUtc(dateKey,endTime);
         const reasons=[];
-        const withinIntro = inIntroWindow(time);
+        const withinIntro = clientType === 'existing' ? true : inIntroWindow(time);
         const noticeOk = startUtc > min;
         if(!withinIntro) reasons.push('outside_intro_window');
         if(!noticeOk) reasons.push('minimum_notice');
-        cells.push({id:makeSlotId(dateKey,time),londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false});
+        cells.push({id:`${makeSlotId(dateKey,time)}-${duration}`,clientType,londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),durationMinutes:duration,withinIntro,noticeOk,blockers:[],reasons,bookable:false});
       }
     }
   }
   return cells;
 }
-export function applyEvents(cells,events=[]){
+export function applyEvents(cells,events=[],clientType='new'){
   for(const ev of events){
     const showAs = String(ev.showAs || 'busy').trim();
     if(!BLOCKING_SHOW_AS.has(showAs)) continue;
@@ -91,7 +93,11 @@ export function applyEvents(cells,events=[]){
       }
     }
   }
-  for(const cell of cells){ cell.bookable = cell.withinIntro && cell.noticeOk && cell.blockers.length===0; }
+  for(const cell of cells){
+    cell.bookable = clientType === 'existing'
+      ? cell.noticeOk && cell.blockers.length===0
+      : cell.withinIntro && cell.noticeOk && cell.blockers.length===0;
+  }
   return cells;
 }
 async function token(env){
@@ -119,15 +125,16 @@ async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
   }
   return events;
 }
-export async function buildAvailability(env){
+export async function buildAvailability(env,clientType='new'){
   const now=new Date();
-  const cells=buildBaseGrid(now);
+  const normalized = clientType === 'existing' ? 'existing' : 'new';
+  const cells=buildBaseGrid(now,normalized);
   if(!liveReady(env)){
     return { live:false, pulledAt:now.toISOString(), cells };
   }
   const rangeStart=new Date(cells[0].startUtc);
   const rangeEnd=new Date(cells[cells.length-1].endUtc);
   const events=await fetchEvents(env,rangeStart,rangeEnd);
-  applyEvents(cells,events);
-  return { live:true, pulledAt:now.toISOString(), cells };
+  applyEvents(cells,events,normalized);
+  return { live:true, pulledAt:now.toISOString(), cells, clientType:normalized };
 }
