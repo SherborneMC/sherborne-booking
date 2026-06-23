@@ -36,3 +36,4 @@ Cloudflare Pages booking site for introductory consultations.
 - Assistant fields are labelled simply: “Name” and “Email”.
 - Calendar hold wording now distinguishes the requester from the assistant/copy recipient.
 - Version updated to v14.
+- Now up to v17 based on v14 with extra buttons on success.
