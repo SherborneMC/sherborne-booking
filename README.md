@@ -15,7 +15,7 @@ Cloudflare Pages booking site for introductory consultations.
 
 - Framework preset: None
 - Build command: leave blank
-- Build output directory: `public`
+- Build output directory: `public` 
 
 ## Required Cloudflare environment variables
 
