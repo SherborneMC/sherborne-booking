@@ -1,84 +1,18 @@
 import { buildAvailability, escapeHtml, graph, json, liveReady, owner, validEmail, BUSINESS_TIME_ZONE, normaliseRequestKind, requestKindConfig, slotForRequest } from '../_shared/calendar.js';
-
-const CONTACT_URL='https://www.sherbornecmc.com/#contact';
-const ICS_DESCRIPTION='Awaiting confirmation. Sherborne will respond to your request shortly.';
-function clean(s,max=500){ return String(s||'').trim().slice(0,max); }
-function contactError(message,status=500,extra={}){return json({error:message,contactUrl:CONTACT_URL,...extra},status);}
-function formatInZone(iso,timeZone){return new Date(iso).toLocaleString('en-GB',{timeZone,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});}
-function timeRangeSummary(startIso,endIso,clientTimeZone){
-  const zone=clientTimeZone||BUSINESS_TIME_ZONE;
-  const start=new Date(startIso), end=new Date(endIso);
-  const datePart=new Intl.DateTimeFormat('en-GB',{timeZone:zone,weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(start);
-  const startTime=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit'}).format(start);
-  const endTime=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(end);
-  const local=`${datePart}, ${startTime} to ${endTime}`;
-  if(clientTimeZone&&clientTimeZone!==BUSINESS_TIME_ZONE){
-    const sherborne=`${formatInZone(startIso,BUSINESS_TIME_ZONE)} to ${new Intl.DateTimeFormat('en-GB',{timeZone:BUSINESS_TIME_ZONE,hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(end)}`;
-    return `${local} (Sherborne diary time: ${sherborne})`;
-  }
-  return local;
-}
-function emailSubject(config,startIso,endIso,clientTimeZone){return `${config.subjectPrefix} - ${timeRangeSummary(startIso,endIso,clientTimeZone)}`;}
-function htmlBlock(label,value){return `<p><strong>${escapeHtml(label)}</strong><br>${escapeHtml(value||'').replaceAll('\n','<br>')}</p>`;}
-function textToHtml(s){return escapeHtml(s).replaceAll('\n','<br>');}
-function icsDate(iso){return new Date(iso).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');}
-function icsEscape(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
-function base64Utf8(s){const bytes=new TextEncoder().encode(s);let bin='';for(const b of bytes)bin+=String.fromCharCode(b);return btoa(bin);}
-function makeIcs({slot,config}){
-  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Sherborne//Booking Request//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',`UID:${icsEscape(slot.id+'-'+slot.requestKind)}@sherbornecmc.com`,`DTSTAMP:${icsDate(new Date().toISOString())}`,`DTSTART:${icsDate(slot.startUtc)}`,`DTEND:${icsDate(slot.effectiveEndUtc)}`,`SUMMARY:${icsEscape(config.icsTitle)}`,`DESCRIPTION:${icsEscape(ICS_DESCRIPTION)}`,'STATUS:TENTATIVE','END:VEVENT','END:VCALENDAR'].join('\r\n');
-}
-function clientBody(){return 'Thank you for your request, we will respond shortly.\n\nBest wishes,\nYour Sherborne Team\n\nIf you need to cancel, please contact us.';}
-function internalHtml({config,slot,name,email,phone,message,assistantEmail,clientTimeZone}){
-  return `<div style="font-family:Arial,sans-serif;line-height:1.45;color:#17201c">
-    <h2 style="font-family:Georgia,serif;font-weight:400;color:#36463b">${escapeHtml(config.subjectPrefix)}</h2>
-    ${htmlBlock('Request type', config.label)}
-    ${htmlBlock('Duration', `${config.durationMinutes} minutes`)}
-    ${htmlBlock('Requested time', timeRangeSummary(slot.startUtc,slot.effectiveEndUtc,clientTimeZone))}
-    ${htmlBlock('Name', name)}
-    ${htmlBlock('Email', email)}
-    ${htmlBlock('Phone', phone)}
-    ${assistantEmail ? htmlBlock('Assistant copied on confirmation email', assistantEmail) : ''}
-    ${htmlBlock('What would be helpful to explore', message)}
-    <p>The internal Sherborne diary hold has been created as tentative. Confirm manually in Outlook if you wish to proceed.</p>
-  </div>`;
-}
-async function sendMichaelEmail(env,d){
-  const michael=owner(env);
-  await graph(env,`/users/${encodeURIComponent(michael)}/sendMail`,'POST',{message:{subject:d.subject,body:{contentType:'HTML',content:internalHtml(d)},toRecipients:[{emailAddress:{address:michael}}]},saveToSentItems:true});
-}
-async function sendClientConfirmationEmail(env,d){
-  const cc=d.assistantEmail?[{emailAddress:{address:d.assistantEmail}}]:[];
-  await graph(env,`/users/${encodeURIComponent(owner(env))}/sendMail`,'POST',{message:{subject:d.subject,body:{contentType:'HTML',content:textToHtml(clientBody())},toRecipients:[{emailAddress:{address:d.email}}],ccRecipients:cc,attachments:[{'@odata.type':'#microsoft.graph.fileAttachment',name:'sherborne-request.ics',contentType:'text/calendar',contentBytes:base64Utf8(makeIcs(d))}]},saveToSentItems:true});
-}
-
-export async function onRequestPost({request,env}){
-  let step='start',createdEventId=null;
-  try{
-    const body=await request.json();
-    const requestKind=normaliseRequestKind(body.requestKind);
-    const config=requestKindConfig(requestKind);
-    const slotId=clean(body.slotId,80), name=clean(body.name,120), email=clean(body.email,254), phone=clean(body.phone,60), message=clean(body.message,250), assistantEmail=clean(body.otherEmail,254), clientTimeZone=clean(body.clientTimeZone,80);
-    if(!config||!slotId||!validEmail(email)||phone.length<7||!message||!name)return json({error:'Please complete the required details and try again.'},400);
-    if(assistantEmail&&!validEmail(assistantEmail))return json({error:'Please check the assistant email address.'},400);
-    if(!liveReady(env))return contactError('The live diary connection is not available just now, so online booking is unavailable. Please contact Sherborne directly.',503);
-    step='checking availability';
-    const result=await buildAvailability(env,'full');
-    if(!result.live)return contactError('The live diary connection is not available just now, so online booking is unavailable. Please contact Sherborne directly.',503);
-    const slot=slotForRequest(result.cells,slotId,requestKind);
-    if(!slot)return json({error:'This time is no longer available. Please choose another time.'},409);
-    const start=new Date(slot.startUtc), end=new Date(slot.effectiveEndUtc);
-    const subject=emailSubject(config,slot.startUtc,slot.effectiveEndUtc,clientTimeZone);
-    step='creating internal Sherborne diary hold';
-    const event=await graph(env,`/users/${encodeURIComponent(owner(env))}/events`,'POST',{subject:`${config.holdTitlePrefix} — ${name} — ${email}`,body:{contentType:'HTML',content:internalHtml({config,slot,name,email,phone,message,assistantEmail,clientTimeZone})},start:{dateTime:start.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},end:{dateTime:end.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},showAs:'tentative',isReminderOn:true,reminderMinutesBeforeStart:60});
-    createdEventId=event.id||null;
-    step='notifying Sherborne';
-    await sendMichaelEmail(env,{config,slot,name,email,phone,message,assistantEmail,clientTimeZone,subject});
-    step='sending client confirmation';
-    await sendClientConfirmationEmail(env,{config,slot,email,assistantEmail,subject});
-    return json({ok:true,requestKind,slotId,eventId:createdEventId});
-  }catch(e){
-    console.log('Booking error',{endpoint:'/api/book',step,message:e.message,eventId:createdEventId});
-    if(createdEventId)return contactError('Your request was received and an internal Sherborne diary hold was created, but an automatic email could not be sent. Please contact Sherborne directly if you do not hear from us shortly.',502,{eventId:createdEventId});
-    return contactError('Sorry, we could not complete your request just now. Please try again, or contact Sherborne directly.',500);
-  }
-}
+const CONTACT_URL='https://www.sherbornecmc.com/#contact', ICS_DESCRIPTION='Awaiting confirmation. Sherborne will respond to your request shortly.';
+function clean(s,max=500){return String(s||'').trim().slice(0,max)}
+function contactError(message,status=500,extra={}){return json({error:message,contactUrl:CONTACT_URL,...extra},status)}
+function formatInZone(iso,timeZone){return new Date(iso).toLocaleString('en-GB',{timeZone,weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'})}
+function timeRangeSummary(startIso,endIso,clientTimeZone){const zone=clientTimeZone||BUSINESS_TIME_ZONE,start=new Date(startIso),end=new Date(endIso),datePart=new Intl.DateTimeFormat('en-GB',{timeZone:zone,weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(start),startTime=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit'}).format(start),endTime=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(end),local=`${datePart}, ${startTime} to ${endTime}`;if(clientTimeZone&&clientTimeZone!==BUSINESS_TIME_ZONE){const sherborne=`${formatInZone(startIso,BUSINESS_TIME_ZONE)} to ${new Intl.DateTimeFormat('en-GB',{timeZone:BUSINESS_TIME_ZONE,hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(end)}`;return `${local} (Sherborne diary time: ${sherborne})`}return local}
+function emailSubject(config,slot,clientTimeZone){return `${config.subjectPrefix} - ${timeRangeSummary(slot.startUtc,slot.effectiveEndUtc,clientTimeZone)}`}
+function htmlBlock(label,value){return `<p><strong>${escapeHtml(label)}</strong><br>${escapeHtml(value||'').replaceAll('\n','<br>')}</p>`}
+function textToHtml(s){return escapeHtml(s).replaceAll('\n','<br>')}
+function icsDate(iso){return new Date(iso).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z')}
+function icsEscape(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n')}
+function base64Utf8(s){const bytes=new TextEncoder().encode(s);let bin='';for(const b of bytes)bin+=String.fromCharCode(b);return btoa(bin)}
+function makeIcs(slot,config){return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Sherborne//Booking Request//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',`UID:${icsEscape(slot.id+'-'+slot.requestKind)}@sherbornecmc.com`,`DTSTAMP:${icsDate(new Date().toISOString())}`,`DTSTART:${icsDate(slot.startUtc)}`,`DTEND:${icsDate(slot.effectiveEndUtc)}`,`SUMMARY:${icsEscape(config.icsTitle)}`,`DESCRIPTION:${icsEscape(ICS_DESCRIPTION)}`,'STATUS:TENTATIVE','END:VEVENT','END:VCALENDAR'].join('\r\n')}
+function clientBody(){return 'Thank you for your request, we will respond shortly.\n\nFor convenience, we have attached a calendar hold for the requested time.\n\nBest wishes,\nYour Sherborne Team\n\nIf you need to cancel, please contact us.'}
+function internalHtml({config,slot,name,email,phone,message,assistantEmail,clientTimeZone}){return `<div style="font-family:Arial,sans-serif;line-height:1.45;color:#17201c"><h2 style="font-family:Georgia,serif;font-weight:400;color:#36463b">${escapeHtml(config.subjectPrefix)}</h2>${htmlBlock('Request type',config.label)}${htmlBlock('Duration',`${config.durationMinutes} minutes`)}${htmlBlock('Requested time',timeRangeSummary(slot.startUtc,slot.effectiveEndUtc,clientTimeZone))}${htmlBlock('Name',name)}${htmlBlock('Email',email)}${htmlBlock('Phone',phone)}${assistantEmail?htmlBlock('Assistant copied on confirmation email',assistantEmail):''}${htmlBlock('What would be helpful to explore',message)}<p>The internal Sherborne diary hold has been created as tentative. Confirm manually in Outlook if you wish to proceed.</p></div>`}
+async function sendMichaelEmail(env,d){const michael=owner(env);await graph(env,`/users/${encodeURIComponent(michael)}/sendMail`,'POST',{message:{subject:d.subject,body:{contentType:'HTML',content:internalHtml(d)},toRecipients:[{emailAddress:{address:michael}}]},saveToSentItems:true})}
+async function sendClientConfirmationEmail(env,d){const cc=d.assistantEmail?[{emailAddress:{address:d.assistantEmail}}]:[];await graph(env,`/users/${encodeURIComponent(owner(env))}/sendMail`,'POST',{message:{subject:d.subject,body:{contentType:'HTML',content:textToHtml(clientBody())},toRecipients:[{emailAddress:{address:d.email}}],ccRecipients:cc,attachments:[{'@odata.type':'#microsoft.graph.fileAttachment',name:'sherborne-request.ics',contentType:'text/calendar',contentBytes:base64Utf8(makeIcs(d.slot,d.config))}]},saveToSentItems:true})}
+export async function onRequestPost({request,env}){let step='start',createdEventId=null;try{const body=await request.json(), requestKind=normaliseRequestKind(body.requestKind), config=requestKindConfig(requestKind), slotId=clean(body.slotId,80), name=clean(body.name,120), email=clean(body.email,254), phone=clean(body.phone,60), message=clean(body.message,250), assistantEmail=clean(body.otherEmail,254), clientTimeZone=clean(body.clientTimeZone,80);if(!config||!slotId||!validEmail(email)||phone.length<7||!message||!name)return json({error:'Please complete the required details and try again.'},400);if(assistantEmail&&!validEmail(assistantEmail))return json({error:'Please check the assistant email address.'},400);if(!liveReady(env))return contactError('The live diary connection is not available just now, so online booking is unavailable. Please contact Sherborne directly.',503);step='checking availability';const result=await buildAvailability(env,'full');if(!result.live)return contactError('The live diary connection is not available just now, so online booking is unavailable. Please contact Sherborne directly.',503);const slot=slotForRequest(result.cells,slotId,requestKind);if(!slot)return json({error:'This time is no longer available. Please choose another time.'},409);const start=new Date(slot.startUtc),end=new Date(slot.effectiveEndUtc),subject=emailSubject(config,slot,clientTimeZone);step='creating internal Sherborne diary hold';const event=await graph(env,`/users/${encodeURIComponent(owner(env))}/events`,'POST',{subject:`${config.holdTitlePrefix} — ${name} — ${email}`,body:{contentType:'HTML',content:internalHtml({config,slot,name,email,phone,message,assistantEmail,clientTimeZone})},start:{dateTime:start.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},end:{dateTime:end.toISOString().replace(/\.\d{3}Z$/,''),timeZone:'UTC'},showAs:'tentative',isReminderOn:true,reminderMinutesBeforeStart:60});createdEventId=event.id||null;step='notifying Sherborne';await sendMichaelEmail(env,{config,slot,name,email,phone,message,assistantEmail,clientTimeZone,subject});step='sending client confirmation';await sendClientConfirmationEmail(env,{config,slot,email,assistantEmail,subject});return json({ok:true,requestKind,slotId,eventId:createdEventId})}catch(e){console.log('Booking error',{endpoint:'/api/book',step,message:e.message,eventId:createdEventId});if(createdEventId)return contactError('Your request was received and an internal Sherborne diary hold was created, but an automatic email could not be sent. Please contact Sherborne directly if you do not hear from us shortly.',502,{eventId:createdEventId});return contactError('Sorry, we could not complete your request just now. Please try again, or contact Sherborne directly.',500)}}
