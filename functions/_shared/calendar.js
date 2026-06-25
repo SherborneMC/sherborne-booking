@@ -2,17 +2,64 @@ export const BUSINESS_TIME_ZONE = 'Europe/London';
 export const SLOT_MINUTES = 30;
 export const WEEKS_TO_SHOW = 4;
 export const OWNER_DEFAULT = 'michael@sherbornecmc.com';
+
 export const INTRO_WINDOWS = [
   { start: '08:00', end: '12:00' },
   { start: '16:30', end: '17:30' }
 ];
+
 export const BLOCKING_SHOW_AS = new Set(['busy', 'oof', 'workingElsewhere', 'unknown']);
+
+export const REQUEST_KINDS = {
+  intro: {
+    requestKind: 'intro',
+    label: 'Introductory session',
+    durationMinutes: 30,
+    subjectPrefix: 'Introductory session request',
+    holdTitlePrefix: 'Awaiting confirmation — introductory session request',
+    icsTitle: 'Awaiting confirmation - Sherborne introductory session'
+  },
+  client30: {
+    requestKind: 'client30',
+    label: 'Client session',
+    durationMinutes: 30,
+    subjectPrefix: 'Client session request',
+    holdTitlePrefix: 'Awaiting confirmation — client session request',
+    icsTitle: 'Awaiting confirmation - Sherborne client session'
+  },
+  client60: {
+    requestKind: 'client60',
+    label: 'Client session',
+    durationMinutes: 60,
+    subjectPrefix: 'Client session request',
+    holdTitlePrefix: 'Awaiting confirmation — client session request',
+    icsTitle: 'Awaiting confirmation - Sherborne client session'
+  }
+};
+
+export function normalisePathway(value){
+  const v=String(value||'').toLowerCase();
+  if(v==='client') return 'client';
+  if(v==='intro') return 'intro';
+  return '';
+}
+
+export function normaliseRequestKind(value){
+  const v=String(value||'').toLowerCase();
+  return REQUEST_KINDS[v] ? v : '';
+}
+
+export function requestKindConfig(value){
+  return REQUEST_KINDS[normaliseRequestKind(value)] || null;
+}
+
 export function owner(env){ return env.OWNER_EMAIL || OWNER_DEFAULT; }
 export function liveReady(env){ return Boolean(env.MS_TENANT_ID && env.MS_CLIENT_ID && env.MS_CLIENT_SECRET && owner(env)); }
 export function json(body,status=200){ return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}}); }
 export function escapeHtml(s){ return String(s || '').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
 export function validEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim()); }
 export function connectionDiagnostics(env){ return { hasMsTenantId:Boolean(env.MS_TENANT_ID), hasMsClientId:Boolean(env.MS_CLIENT_ID), hasMsClientSecret:Boolean(env.MS_CLIENT_SECRET), hasOwnerEmail:Boolean(owner(env)), owner:owner(env), liveReady:liveReady(env) }; }
+
 function pad(n){ return String(n).padStart(2,'0'); }
 export function londonParts(date){
   const parts = new Intl.DateTimeFormat('en-GB',{timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).formatToParts(date).reduce((a,p)=>{ if(p.type!=='literal') a[p.type]=p.value; return a; },{});
@@ -44,7 +91,6 @@ function minutesOf(time){ const [h,m]=time.split(':').map(Number); return h*60+m
 function addMinutesTime(time,mins){ const total=minutesOf(time)+mins; return `${pad(Math.floor(total/60))}:${pad(total%60)}`; }
 function inIntroWindow(time){ const m=minutesOf(time); return INTRO_WINDOWS.some(w=>m>=minutesOf(w.start) && m<minutesOf(w.end)); }
 function overlap(aStart,aEnd,bStart,bEnd){ return aStart < bEnd && aEnd > bStart; }
-function makeSlotId(dateKey,time){ return `${dateKey}T${time}`; }
 function parseGraphDateTime(value, timeZone){
   if(!value) return null;
   const s=String(value);
@@ -53,11 +99,12 @@ function parseGraphDateTime(value, timeZone){
   return new Date(s+'Z');
 }
 function eventTimes(ev){ return {start: parseGraphDateTime(ev.start?.dateTime, ev.start?.timeZone), end: parseGraphDateTime(ev.end?.dateTime, ev.end?.timeZone)}; }
-export function buildBaseGrid(now=new Date()){
+
+export function buildBaseGrid(now=new Date(), weeksToShow=WEEKS_TO_SHOW){
   const start = startOfLondonWeek(now);
   const min = new Date(now.getTime()+4*60*60*1000);
   const cells=[];
-  for(let w=0; w<WEEKS_TO_SHOW; w++){
+  for(let w=0; w<weeksToShow; w++){
     for(let i=0; i<5; i++){
       const p = addDaysLocal(start.year,start.month,start.day,w*7+i);
       const dateKey = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
@@ -69,14 +116,14 @@ export function buildBaseGrid(now=new Date()){
         const reasons=[];
         const withinIntro = inIntroWindow(time);
         const noticeOk = startUtc > min;
-        if(!withinIntro) reasons.push('outside_intro_window');
         if(!noticeOk) reasons.push('minimum_notice');
-        cells.push({id:makeSlotId(dateKey,time),londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,bookable:false});
+        cells.push({id:`${dateKey}T${time}`,londonDate:dateKey,londonTime:time,startUtc:startUtc.toISOString(),endUtc:endUtc.toISOString(),withinIntro,noticeOk,blockers:[],reasons,calendarFree:false,introBookable:false,client30Bookable:false,client60Bookable:false,nextStartUtc:null,nextEndUtc:null,bookable:false});
       }
     }
   }
   return cells;
 }
+
 export function applyEvents(cells,events=[]){
   for(const ev of events){
     const showAs = String(ev.showAs || 'busy').trim();
@@ -91,9 +138,36 @@ export function applyEvents(cells,events=[]){
       }
     }
   }
-  for(const cell of cells){ cell.bookable = cell.withinIntro && cell.noticeOk && cell.blockers.length===0; }
+  for(const cell of cells){ cell.calendarFree = cell.noticeOk && cell.blockers.length===0; }
+  applyDerivedRules(cells);
   return cells;
 }
+
+export function applyDerivedRules(cells){
+  const byId=new Map(cells.map(c=>[c.id,c]));
+  for(const cell of cells){
+    const nextTime = addMinutesTime(cell.londonTime,SLOT_MINUTES);
+    const next=byId.get(`${cell.londonDate}T${nextTime}`);
+    cell.introBookable = cell.calendarFree && cell.withinIntro;
+    cell.client30Bookable = cell.calendarFree;
+    cell.client60Bookable = cell.calendarFree && Boolean(next) && next.londonDate===cell.londonDate && next.calendarFree;
+    cell.nextStartUtc = next ? next.startUtc : null;
+    cell.nextEndUtc = next ? next.endUtc : null;
+    cell.bookable = cell.introBookable;
+  }
+  return cells;
+}
+
+export function slotForRequest(cells,slotId,requestKind){
+  const kind=normaliseRequestKind(requestKind);
+  const cell=cells.find(c=>c.id===slotId);
+  if(!cell) return null;
+  if(kind==='intro' && cell.introBookable) return {...cell, requestKind:kind, durationMinutes:30, effectiveEndUtc:cell.endUtc};
+  if(kind==='client30' && cell.client30Bookable) return {...cell, requestKind:kind, durationMinutes:30, effectiveEndUtc:cell.endUtc};
+  if(kind==='client60' && cell.client60Bookable) return {...cell, requestKind:kind, durationMinutes:60, effectiveEndUtc:cell.nextEndUtc};
+  return null;
+}
+
 async function token(env){
   const body=new URLSearchParams({client_id:env.MS_CLIENT_ID,client_secret:env.MS_CLIENT_SECRET,scope:'https://graph.microsoft.com/.default',grant_type:'client_credentials'});
   const r=await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`,{method:'POST',body});
@@ -119,15 +193,14 @@ async function fetchEvents(env,rangeStartUtc,rangeEndUtc){
   }
   return events;
 }
-export async function buildAvailability(env){
+export async function buildAvailability(env,scope='full'){
   const now=new Date();
-  const cells=buildBaseGrid(now);
-  if(!liveReady(env)){
-    return { live:false, pulledAt:now.toISOString(), cells };
-  }
+  const weeksToShow = scope === 'currentWeek' ? 1 : WEEKS_TO_SHOW;
+  const cells=buildBaseGrid(now,weeksToShow);
+  if(!liveReady(env)) return { live:false, scope, pulledAt:now.toISOString(), cells:applyDerivedRules(cells) };
   const rangeStart=new Date(cells[0].startUtc);
   const rangeEnd=new Date(cells[cells.length-1].endUtc);
   const events=await fetchEvents(env,rangeStart,rangeEnd);
   applyEvents(cells,events);
-  return { live:true, pulledAt:now.toISOString(), cells };
+  return { live:true, scope, pulledAt:now.toISOString(), cells };
 }
