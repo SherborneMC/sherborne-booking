@@ -16,7 +16,18 @@ export function liveReady(env){return Boolean(env.MS_TENANT_ID&&env.MS_CLIENT_ID
 export function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}})}
 export function escapeHtml(s){return String(s||'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
 export function validEmail(s){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||'').trim())}
-export function safeTimeZone(tz){try{if(!tz)return BUSINESS_TIME_ZONE;new Intl.DateTimeFormat('en-GB',{timeZone:tz}).format(new Date());return tz}catch{return BUSINESS_TIME_ZONE}}
+
+export function safeTimeZone(tz){
+  const fallback = BUSINESS_TIME_ZONE;
+  const value = String(tz||'').trim();
+  if(!value)return fallback;
+  try{
+    new Intl.DateTimeFormat('en-GB',{timeZone:value}).format(new Date());
+    return value;
+  }catch{
+    return fallback;
+  }
+}
 export function connectionDiagnostics(env){return {hasMsTenantId:Boolean(env.MS_TENANT_ID),hasMsClientId:Boolean(env.MS_CLIENT_ID),hasMsClientSecret:Boolean(env.MS_CLIENT_SECRET),hasOwnerEmail:Boolean(owner(env)),owner:owner(env),liveReady:liveReady(env)}}
 function pad(n){return String(n).padStart(2,'0')}
 export function londonParts(date){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:BUSINESS_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(date).reduce((a,p)=>{if(p.type!=='literal')a[p.type]=p.value;return a},{});return {year:+parts.year,month:+parts.month,day:+parts.day,hour:+parts.hour,minute:+parts.minute,second:+parts.second}}
